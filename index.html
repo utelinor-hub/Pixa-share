@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>PIXA SHARE — send phone photos to your PC</title>
+<meta name="theme-color" content="#0d3b66" />
+<link rel="manifest" href="./manifest.webmanifest" />
+<link rel="icon" href="./icons/favicon.png" />
+<link rel="apple-touch-icon" href="./icons/icon-192.png" />
+<style>
+  /* ============================================================
+     PIXA SHARE — clean InShare-style mobile sender (v1.0.0)
+     Same Google account as PIXA on the PC. Photos travel through
+     the user's own Google Drive ("SHIVAM PIXA" folder) at ORIGINAL
+     bytes — same size, same resolution, same ratio, nothing is
+     re-encoded. Works over home WiFi and mobile data both.
+     UI language: English only (project rule).
+     ============================================================ */
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+    background: #eef3f9; color: #14243a;
+    min-height: 100vh; min-height: 100dvh;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  button { font: inherit; cursor: pointer; }
+
+  /* ---------- header ---------- */
+  .top {
+    position: sticky; top: 0; z-index: 10;
+    background: linear-gradient(135deg, #0d3b66 0%, #14538c 60%, #1a6bb3 100%);
+    color: #fff; padding: 12px 14px 12px;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    box-shadow: 0 2px 10px rgba(13,59,102,.28);
+  }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .brand img { width: 34px; height: 34px; border-radius: 9px; background: #fff; padding: 2px; }
+  .brand .t { font-size: 19px; font-weight: 800; letter-spacing: .4px; }
+  .brand .s { font-size: 10.5px; opacity: .85; letter-spacing: 1.6px; font-weight: 600; margin-top: 1px; }
+  .pcstat {
+    margin-top: 9px; display: flex; align-items: center; gap: 7px;
+    font-size: 12px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.22);
+    border-radius: 999px; padding: 5px 11px; width: fit-content; max-width: 100%;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #ffd166; flex: none; }
+  .dot.ok { background: #37e2a2; box-shadow: 0 0 0 3px rgba(55,226,162,.22); }
+  .dot.off { background: #ff8f8f; }
+
+  main { max-width: 560px; margin: 0 auto; padding: 13px 13px 30px; }
+  .card {
+    background: #fff; border-radius: 16px; padding: 14px;
+    box-shadow: 0 1px 4px rgba(20,36,58,.07); margin-bottom: 12px;
+  }
+
+  /* ---------- sync toggle ---------- */
+  .syncRow { display: flex; align-items: center; gap: 12px; }
+  .syncRow .tx { flex: 1; min-width: 0; }
+  .syncRow h2 { margin: 0; font-size: 15.5px; font-weight: 750; }
+  .syncRow p { margin: 3px 0 0; font-size: 12px; color: #5b6b82; line-height: 1.45; }
+  .switch { position: relative; width: 58px; height: 32px; flex: none; }
+  .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; z-index: 2; cursor: pointer; }
+  .knob {
+    position: absolute; inset: 0; border-radius: 999px; background: #cdd8e6; transition: background .18s;
+  }
+  .knob::after {
+    content: ''; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); transition: transform .18s;
+  }
+  .switch input:checked + .knob { background: #0aa574; }
+  .switch input:checked + .knob::after { transform: translateX(26px); }
+
+  /* ---------- account ---------- */
+  .acct { display: flex; align-items: center; gap: 11px; }
+  .avatar {
+    width: 40px; height: 40px; border-radius: 50%; flex: none; background: #e8eef6;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    color: #14538c; font-weight: 800; font-size: 16px;
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .acct .who { flex: 1; min-width: 0; }
+  .acct .em { font-size: 13.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acct .st { font-size: 11.5px; color: #5b6b82; margin-top: 2px; }
+  .gbtn {
+    display: inline-flex; align-items: center; gap: 8px; background: #fff; color: #333;
+    border: 1px solid #d5dde8; border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 650;
+  }
+  .gbtn:active { background: #f2f6fb; }
+  .lnk { background: none; border: none; color: #14538c; font-size: 12px; text-decoration: underline; padding: 4px 2px; }
+
+  /* ---------- send button ---------- */
+  .bigSend {
+    width: 100%; border: none; border-radius: 16px; padding: 15px;
+    background: linear-gradient(135deg, #0aa574, #0cbb84); color: #fff;
+    font-size: 16px; font-weight: 800; letter-spacing: .3px;
+    box-shadow: 0 4px 14px rgba(10,165,116,.32);
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+  }
+  .bigSend:active { transform: translateY(1px); }
+  .bigSend svg { width: 20px; height: 20px; }
+
+  /* ---------- list ---------- */
+  .listTitle { display: flex; align-items: baseline; gap: 8px; margin: 16px 2px 8px; }
+  .listTitle h3 { margin: 0; font-size: 13px; font-weight: 750; color: #44566e; letter-spacing: .5px; text-transform: uppercase; }
+  .listTitle span { font-size: 11.5px; color: #7d8ca1; }
+  .item { display: flex; gap: 11px; align-items: center; }
+  .thumb {
+    width: 54px; height: 54px; border-radius: 11px; flex: none; background: #e8eef6 center/cover no-repeat;
+    position: relative; overflow: hidden;
+  }
+  .thumb .badge {
+    position: absolute; right: 3px; bottom: 3px; width: 17px; height: 17px; border-radius: 50%;
+    background: #0aa574; color: #fff; font-size: 11px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; border: 1.5px solid #fff;
+  }
+  .thumb .badge.rcv { background: #0b7a56; }
+  .thumb .badge.fail { background: #d9534f; }
+  .meta { flex: 1; min-width: 0; }
+  .meta .nm { font-size: 13.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meta .sz { font-size: 11.5px; color: #7d8ca1; margin-top: 2px; }
+  .chip {
+    display: inline-block; font-size: 10.5px; font-weight: 750; border-radius: 999px;
+    padding: 2.5px 9px; letter-spacing: .3px; margin-top: 4px;
+  }
+  .chip.wait { background: #eef2f7; color: #5b6b82; }
+  .chip.send { background: #e3f0ff; color: #14538c; }
+  .chip.sent { background: #e0f7ee; color: #0a8a63; }
+  .chip.rcv  { background: #0b7a56; color: #fff; }
+  .chip.fail { background: #fdeaea; color: #c0392b; }
+  .bar { height: 4px; background: #e5ecf4; border-radius: 99px; margin-top: 7px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: #1a6bb3; border-radius: 99px; width: 0%; transition: width .2s; }
+  .retry { border: 1px solid #d5dde8; background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 700; color: #c0392b; flex: none; }
+  .empty { text-align: center; color: #7d8ca1; font-size: 13px; padding: 26px 10px; line-height: 1.6; }
+  .empty b { color: #44566e; }
+
+  .note { font-size: 11.5px; color: #7d8ca1; line-height: 1.6; margin: 14px 4px 0; text-align: center; }
+  .note b { color: #44566e; }
+  .install { margin-top: 10px; text-align: center; }
+  .install button {
+    border: 1px solid #bcd0e4; background: #fff; color: #14538c; border-radius: 999px;
+    padding: 8px 16px; font-size: 12.5px; font-weight: 700;
+  }
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
+    background: #14243a; color: #fff; font-size: 12.5px; padding: 9px 16px; border-radius: 999px;
+    opacity: 0; pointer-events: none; transition: all .25s; max-width: 88vw; text-align: center; z-index: 50;
+  }
+  .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="./icons/logo-round.png" alt="PIXA SHARE" />
+      <div>
+        <div class="t">PIXA SHARE</div>
+        <div class="s">PHONE &rarr; PC &bull; ORIGINAL QUALITY</div>
+      </div>
+    </div>
+    <div class="pcstat"><span class="dot" id="pcDot"></span><span id="pcText">Checking for your PC&hellip;</span></div>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="syncRow">
+        <div class="tx">
+          <h2>Auto send to PC</h2>
+          <p id="syncNote">OFF — photos wait until you turn it on. ON — the app keeps running in the background and every picked photo sends itself to PIXA on your PC.</p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="syncOn" aria-label="Auto send to PC" />
+          <span class="knob"></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="card" id="acctCard">
+      <div class="acct" id="acctOut">
+        <div class="avatar">?</div>
+        <div class="who">
+          <div class="em">Not signed in</div>
+          <div class="st">Sign in with the <b>same Google account</b> as PIXA on your PC</div>
+        </div>
+        <button class="gbtn" id="signIn">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.6c-.1 1.1-.9 2.8-2.5 3.9l3.8 2.9c2.3-2.1 3.6-5.2 3.6-8.7z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.8-2.9c-1 .7-2.4 1.2-4.1 1.2-3.2 0-5.9-2.1-6.8-5l-4 3C3.1 21.3 7.2 24 12 24z"/><path fill="#FBBC05" d="M5.2 14.4c-.2-.7-.4-1.5-.4-2.4s.2-1.7.4-2.4l-4-3.1C.4 8.2 0 10 0 12s.4 3.8 1.2 5.4l4-3z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l3.3-3.2C17.9 1.1 15.2 0 12 0 7.2 0 3.1 2.7 1.2 6.6l4 3.1c.9-2.9 3.6-5 6.8-5z"/></svg>
+          Sign in
+        </button>
+      </div>
+    </section>
+
+    <button class="bigSend" id="pick">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>
+      Pick photos to send
+    </button>
+
+    <div class="listTitle"><h3>Transfer list</h3><span id="listSub"></span></div>
+    <section class="card" id="listCard">
+      <div class="empty" id="empty">
+        <b>No photos yet.</b><br />
+        Press <b>Pick photos to send</b> — or in your Gallery select photos and use <b>Share &rarr; PIXA SHARE</b>.
+      </div>
+      <div id="list"></div>
+    </section>
+
+    <div class="install" id="installRow" style="display:none">
+      <button id="installBtn">Install PIXA SHARE on Home screen</button>
+    </div>
+
+    <p class="note"><b>Originals only</b> — photos reach the PC with the same size, same resolution and same ratio. Nothing is compressed. Works over <b>WiFi and mobile data</b> both, through your own Google Drive.</p>
+  </main>
+
+  <input type="file" id="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif" multiple hidden />
+  <div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ===== constants (mirror js/cloud.js on the PC) ===== */
+  const CLIENT_ID = '941573311970-4as3d63hd7kph89olmam7k725jinu22h.apps.googleusercontent.com';
+  const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+  const DRIVE = 'https://www.googleapis.com/drive/v3';
+  const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
+  const FOLDER_NAME = 'SHIVAM PIXA';
+  const HEARTBEAT_NAME = 'pixa-share-mobile.json';
+  const IMG_EXT = /\.(jpe?g|png|gif|webp|bmp|avif)$/i;
+  const GIS_SRC = 'https://accounts.google.com/gsi/client';
+
+  /* Same guard as cloud.js on the PC: Google auth may only START from the
+     official site — from anywhere else (localhost, a fork, a copied file)
+     Google bounces the whole page to an error screen. */
+  const ALLOWED_ORIGINS = ['https://utelinor-hub.github.io'];
+  const originAllowed = () => ALLOWED_ORIGINS.includes(location.origin);
+
+  /* ===== tiny state ===== */
+  const S = {
+    token: null, tokenExp: 0, email: '',
+    syncOn: false,
+    folderId: null, manifestId: null, beatId: null,
+    items: [],               /* {id,name,size,type,lastModified,blob,thumb,status,progress,err,fileId,addedAt,sentAt,receivedAt,nextTry} */
+    running: false, forceOnce: false,
+    gisLoaded: false, tc: null,
+    pcSeen: false, mismatchWarned: false,
+    wakeLock: null, deferredInstall: null
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  const fmtTime = (t) => { try { return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
+  let toastT = null;
+  function toast(msg, ms) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('on');
+    clearTimeout(toastT);
+    toastT = setTimeout(() => el.classList.remove('on'), ms || 3200);
+  }
+
+  /* ===== IndexedDB: 'pixashare' { kv, items } — the service worker
+         reads the SAME stores, so background sending works with the
+         app closed (that is the "back me run karta rahe" part). ===== */
+  let dbP = null;
+  function db() {
+    if (!dbP) dbP = new Promise((res, rej) => {
+      const rq = indexedDB.open('pixashare', 1);
+      rq.onupgradeneeded = () => {
+        const d = rq.result;
+        if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
+        if (!d.objectStoreNames.contains('items')) d.createObjectStore('items');
+      };
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+    return dbP;
+  }
+  const idbReq = (store, mode, fn) => db().then((d) => new Promise((res, rej) => {
+    const t = d.transaction(store, mode);
+    const rq = fn(t.objectStore(store));
+    t.oncomplete = () => res(rq ? rq.result : undefined);
+    t.onerror = () => rej(t.error);
+    t.onabort = () => rej(t.error);
+  }));
+  const kvGet = (k) => idbReq('kv', 'readonly', (s) => s.get(k)).catch(() => null);
+  const kvSet = (k, v) => idbReq('kv', 'readwrite', (s) => s.put(v, k)).catch(() => {});
+  const itPut = (it) => { const c = cleanItem(it); return idbReq('items', 'readwrite', (s) => s.put(c, it.id)).catch(() => {}); };
+  const itDel = (id) => idbReq('items', 'readwrite', (s) => s.delete(id)).catch(() => {});
+  const itAll = () => idbReq('items', 'readonly', (s) => s.getAll()).catch(() => []);
+  /* blobs never go into memory copies of finished items — they live in IDB
+     only while the upload is still pending */
+  function cleanItem(it) {
+    const c = Object.assign({}, it);
+    if (c.status !== 'waiting' && c.status !== 'failed' && c.status !== 'sending') delete c.blob;
+    return c;
+  }
+
+  /* ===== session (localStorage for the page, IDB kv for the worker) ===== */
+  function sessLoad() {
+    try {
+      const s = JSON.parse(localStorage.getItem('pixashare.sess') || 'null');
+      if (s && s.token && s.exp && Date.now() < s.exp) { S.token = s.token; S.tokenExp = s.exp; S.email = s.email || ''; }
+    } catch (e) {}
+  }
+  function sessSave() {
+    try { localStorage.setItem('pixashare.sess', JSON.stringify({ token: S.token, exp: S.tokenExp, email: S.email })); } catch (e) {}
+    kvSet('sess', { token: S.token, exp: S.tokenExp, email: S.email });
+  }
+  function sessClear() {
+    try { localStorage.removeItem('pixashare.sess'); } catch (e) {}
+    kvSet('sess', null);
+  }
+  const hasToken = () => !!(S.token && Date.now() < S.tokenExp);
+
+  /* ===== Google Identity Services (same client as the PC app) ===== */
+  function loadGis() {
+    if (S.gisLoaded) return Promise.resolve();
+    if (window.google && window.google.accounts) { S.gisLoaded = true; return Promise.resolve(); }
+    return new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = GIS_SRC; s.async = true;
+      s.onload = () => { S.gisLoaded = true; res(); };
+      s.onerror = () => rej(new Error('Could not load Google sign-in — check the internet'));
+      document.head.appendChild(s);
+    });
+  }
+  function storeToken(resp) {
+    if (resp && resp.access_token) {
+      S.token = resp.access_token;
+      S.tokenExp = Date.now() + Math.max(60, (Number(resp.expires_in) || 3600) - 90) * 1000;
+      sessSave();
+    }
+  }
+  async function ensureTc() {
+    await loadGis();
+    if (!S.tc) {
+      S.tc = window.google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID, scope: SCOPE, callback: storeToken, error_callback: () => {}
+      });
+    }
+    return S.tc;
+  }
+  async function askToken(promptMode) {
+    const tc = await ensureTc();
+    return new Promise((resolve, reject) => {
+      const done = (fn, arg) => { try { tc.callback = origC; } catch (e) {} clearTimeout(tm); fn(arg); };
+      const origC = tc.callback;
+      const tm = setTimeout(() => done(reject, new Error('Google sign-in timed out — try again')), 120000);
+      tc.callback = (resp) => {
+        if (resp && resp.access_token) { storeToken(resp); done(resolve, S.token); }
+        else done(reject, new Error('Sign-in was cancelled or blocked — make sure this account is allowed to use PIXA'));
+      };
+      try { tc.requestAccessToken({ prompt: promptMode || '' }); } catch (e) { done(reject, e); }
+    });
+  }
+  async function silentRenew() {
+    if (!originAllowed()) return null;
+    try { return await askToken('none'); } catch (e) { return null; }
+  }
+
+  async function signIn() {
+    try {
+      if (!originAllowed()) {
+        toast('Sign-in works on the official app site: utelinor-hub.github.io/pixa-share', 8000);
+        return;
+      }
+      await loadGis();
+      await askToken('consent select_account');
+      const r = await gfetch(`${DRIVE}/about?fields=user`);
+      if (r.ok) {
+        const j = await r.json();
+        S.email = (j.user && j.user.emailAddress) || '';
+        sessSave();
+      }
+      renderAcct();
+      toast(S.email ? `Signed in as ${S.email}` : 'Signed in');
+      kick();
+      manifestLoop();
+    } catch (e) {
+      toast('Sign-in failed: ' + (e.message || e), 5200);
+    }
+  }
+  function signOut() {
+    try { if (S.token && window.google && window.google.accounts) window.google.accounts.oauth2.revoke(S.token, () => {}); } catch (e) {}
+    S.token = null; S.tokenExp = 0; S.email = '';
+    S.folderId = null; S.manifestId = null; S.beatId = null;
+    sessClear();
+    kvSet('ids', null);
+    renderAcct();
+    toast('Signed out');
+  }
+
+  /* ===== authed fetch (renews once on 401) ===== */
+  async function gfetch(url, opts = {}, retry = true) {
+    if (!hasToken()) {
+      const t = await silentRenew();
+      if (!t) throw new Error('Google session expired — press Sign in again');
+    }
+    opts.headers = Object.assign({}, opts.headers, { Authorization: 'Bearer ' + S.token });
+    let r;
+    try { r = await fetch(url, opts); }
+    catch (e) { throw new Error('Network error — check the internet'); }
+    if (r.status === 401 && retry) {
+      S.token = null;
+      try { const t = await silentRenew(); if (t) return gfetch(url, opts, false); } catch (e) {}
+    }
+    return r;
+  }
+
+  /* ===== Drive helpers (same conventions as the PC app) ===== */
+  async function idsLoad() {
+    const ids = await kvGet('ids');
+    if (ids) { S.folderId = ids.folderId || null; S.manifestId = ids.manifestId || null; S.beatId = ids.beatId || null; }
+  }
+  function idsSave() { kvSet('ids', { folderId: S.folderId, manifestId: S.manifestId, beatId: S.beatId }); }
+
+  async function findFolder() {
+    if (S.folderId) return S.folderId;
+    const q = encodeURIComponent(`name = '${FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and 'root' in parents`);
+    const r = await gfetch(`${DRIVE}/files?q=${q}&fields=files(id)&pageSize=5`);
+    if (!r.ok) throw new Error('Drive error ' + r.status);
+    const j = await r.json();
+    if (j.files && j.files.length) { S.folderId = j.files[0].id; idsSave(); return S.folderId; }
+    const cr = await gfetch(`${DRIVE}/files`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' })
+    });
+    if (!cr.ok) throw new Error('Drive error ' + cr.status);
+    S.folderId = (await cr.json()).id; idsSave(); return S.folderId;
+  }
+
+  async function findManifest() {
+    if (S.manifestId) return S.manifestId;
+    const fid = await findFolder();
+    const q = encodeURIComponent(`name = 'pixa-manifest.json' and trashed = false and '${fid}' in parents`);
+    const r = await gfetch(`${DRIVE}/files?q=${q}&fields=files(id)&pageSize=5`);
+    if (!r.ok) return null;
+    const j = await r.json();
+    S.manifestId = (j.files && j.files.length) ? j.files[0].id : null;
+    idsSave();
+    return S.manifestId;
+  }
+
+  async function findHeartbeat() {
+    if (S.beatId) return S.beatId;
+    const fid = await findFolder();
+    const q = encodeURIComponent(`name = '${HEARTBEAT_NAME}' and trashed = false and '${fid}' in parents`);
+    const r = await gfetch(`${DRIVE}/files?q=${q}&fields=files(id)&pageSize=5`);
+    if (!r.ok) return null;
+    const j = await r.json();
+    S.beatId = (j.files && j.files.length) ? j.files[0].id : null;
+    idsSave();
+    return S.beatId;
+  }
+
+  /* small 640px preview so the PC grid fills fast; the FULL original is
+     the second upload and it is byte-for-byte the picked file */
+  function makeThumb(blob) {
+    return new Promise(async (res) => {
+      try {
+        const src = await createImageBitmap(blob);
+        const MAX = 640;
+        const sc = Math.min(1, MAX / Math.max(src.width, src.height));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(src.width * sc));
+        c.height = Math.max(1, Math.round(src.height * sc));
+        const cx = c.getContext('2d');
+        cx.drawImage(src, 0, 0, c.width, c.height);
+        if (src.close) src.close();
+        cx.globalCompositeOperation = 'destination-over';
+        cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, c.width, c.height);
+        cx.globalCompositeOperation = 'source-over';
+        c.toBlob((b) => res(b), 'image/jpeg', 0.75);
+      } catch (e) { res(null); }
+    });
+  }
+
+  function thumbDataURL(blob) {
+    return new Promise(async (res) => {
+      try {
+        const src = await createImageBitmap(blob);
+        const MAX = 160;
+        const sc = Math.min(1, MAX / Math.max(src.width, src.height));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(src.width * sc));
+        c.height = Math.max(1, Math.round(src.height * sc));
+        c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+        if (src.close) src.close();
+        res(c.toDataURL('image/jpeg', 0.7));
+      } catch (e) { res(''); }
+    });
+  }
+
+  /* XHR upload — fetch() cannot report upload progress */
+  function xhrUpload(blob, meta, onProg) {
+    return new Promise((resolve, reject) => {
+      const boundary = 'pixabnd';
+      const pre = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: ${blob.type || 'application/octet-stream'}\r\n\r\n`;
+      const body = new Blob([pre, blob, `\r\n--${boundary}--`], { type: `multipart/related; boundary=${boundary}` });
+      const x = new XMLHttpRequest();
+      x.open('POST', `${UPLOAD}/files?uploadType=multipart&fields=id,createdTime`);
+      x.setRequestHeader('Authorization', 'Bearer ' + S.token);
+      x.setRequestHeader('Content-Type', 'multipart/related; boundary=pixabnd');
+      x.upload.onprogress = (e) => { if (e.lengthComputable && onProg) onProg(Math.round((e.loaded / e.total) * 100)); };
+      x.onload = () => {
+        if (x.status >= 200 && x.status < 300) {
+          try { resolve(JSON.parse(x.responseText)); } catch (e) { resolve({}); }
+        } else reject(new Error('HTTP ' + x.status));
+      };
+      x.onerror = () => reject(new Error('Network error — will retry'));
+      x.send(body);
+    });
+  }
+
+  /* ===== sending one item (original bytes, plus a small preview) ===== */
+  async function sendItem(it) {
+    it.status = 'sending'; it.progress = 0; it.err = '';
+    renderList(); saveItem(it);
+    try {
+      const fid = await findFolder();
+      /* preview thumb (matches the PC's `${name}.thumb.jpg` convention) */
+      const tb = await makeThumb(it.blob);
+      if (tb) {
+        try { await xhrUpload(tb, { name: `${it.name}.thumb.jpg`, parents: [fid], appProperties: { pixa: 'thumb' } }); } catch (e) { /* preview is optional */ }
+      }
+      const up = await xhrUpload(it.blob, { name: it.name, parents: [fid], appProperties: { pixa: 'share' } },
+        (p) => { it.progress = p; paintProgress(it); });
+      it.fileId = up.id || null;
+      it.status = 'sent'; it.progress = 100; it.sentAt = Date.now();
+      delete it.blob;            /* free the phone storage — original is on Drive now */
+      saveItem(it); renderList();
+      updateHeader(); updateSub();
+      wakeOff();
+    } catch (e) {
+      const msg = String(e.message || e);
+      it.status = 'failed'; it.err = msg; it.nextTry = Date.now() + 20000;
+      saveItem(it); renderList();
+      wakeOff();
+    }
+  }
+
+  /* ===== the background queue loop ===== */
+  async function kick(forceOnce) {
+    if (forceOnce) S.forceOnce = true;
+    if (S.running) return;
+    S.running = true;
+    try {
+      while (S.syncOn || S.forceOnce) {
+        if (!hasToken()) {
+          const t = await silentRenew();
+          if (!t) {
+            if (S.items.some((i) => i.status === 'waiting' || i.status === 'failed')) renderAcct();
+            break;
+          }
+        }
+        const due = S.items.find((i) =>
+          (i.status === 'waiting') ||
+          (i.status === 'failed' && (!i.nextTry || Date.now() >= i.nextTry)));
+        if (!due) break;
+        await sendItem(due);
+      }
+    } finally {
+      S.running = false; S.forceOnce = false;
+      updateHeader(); updateSub();
+    }
+  }
+
+  /* ===== received-checker + heartbeat (every 20 s while visible) ===== */
+  let manifestLoopOn = false;
+  async function manifestLoop() {
+    if (manifestLoopOn) return;
+    manifestLoopOn = true;
+    try {
+      while (true) {
+        await new Promise((r) => setTimeout(r, 20000));
+        if (document.hidden || !hasToken()) continue;
+        if (!S.items.some((i) => i.status === 'sent' || i.status === 'received')) continue;
+        try {
+          const mid = await findManifest();
+          if (!mid) { S.pcSeen = false; updateHeader(); continue; }
+          const r = await gfetch(`${DRIVE}/files/${mid}?alt=media`);
+          if (!r.ok) continue;
+          const m = await r.json();
+          const got = new Set((m.photos || []).map((e) => e.fileId).filter(Boolean));
+          let fresh = 0;
+          for (const it of S.items) {
+            if (it.status === 'sent' && it.fileId && got.has(it.fileId)) {
+              it.status = 'received'; it.receivedAt = Date.now(); fresh++;
+              saveItem(it);
+            }
+          }
+          S.pcSeen = true;
+          if (fresh) { toast(`${fresh} photo${fresh > 1 ? 's' : ''} received on your PC ✓`); renderList(); }
+          updateHeader();
+          /* heartbeat: tell the PC which account this phone uses, so a
+             wrong-account sign-in is caught the same minute */
+          await upsertHeartbeat();
+        } catch (e) { /* best-effort loop */ }
+      }
+    } finally { manifestLoopOn = false; }
+  }
+
+  async function upsertHeartbeat() {
+    try {
+      const fid = await findFolder();
+      const body = JSON.stringify({ device: 'phone', email: S.email, at: new Date().toISOString(), app: 'PIXA SHARE' });
+      const bid = await findHeartbeat();
+      if (bid) {
+        await gfetch(`${UPLOAD}/files/${bid}?uploadType=media`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body });
+      } else {
+        const r = await gfetch(`${UPLOAD}/files?uploadType=multipart&fields=id`, {
+          method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=pixabnd' },
+          body: new Blob(
+            [`--pixabnd\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: HEARTBEAT_NAME, parents: [fid] })}\r\n--pixabnd\r\nContent-Type: application/json\r\n\r\n${body}\r\n--pixabnd--`],
+            { type: 'multipart/related; boundary=pixabnd' })
+        });
+        if (r.ok) { S.beatId = (await r.json()).id; idsSave(); }
+      }
+    } catch (e) { /* heartbeat is best-effort */ }
+  }
+
+  /* ===== picking photos ===== */
+  async function onPick(files) {
+    if (!files || !files.length) return;
+    let added = 0, skipped = 0, bad = 0;
+    for (const f of files) {
+      if (!IMG_EXT.test(f.name || '')) { bad++; continue; }
+      const key = `${f.name}|${f.size}|${f.lastModified || 0}`;
+      if (S.items.some((i) => `${i.name}|${i.size}|${i.lastModified || 0}` === key)) { skipped++; continue; }
+      const it = {
+        id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+        name: f.name, size: f.size, type: f.type || 'image/jpeg',
+        lastModified: f.lastModified || Date.now(),
+        blob: f, thumb: await thumbDataURL(f),
+        status: 'waiting', progress: 0, err: '',
+        fileId: null, addedAt: Date.now(), sentAt: 0, receivedAt: 0, nextTry: 0
+      };
+      S.items.unshift(it);
+      saveItem(it);
+      added++;
+    }
+    renderList(); updateSub();
+    if (added) {
+      toast(`${added} photo${added > 1 ? 's' : ''} added${S.syncOn ? ' — sending…' : ' — turn Auto send ON'}`);
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        try { navigator.serviceWorker.controller.postMessage({ type: 'PIXASHARE_ENQUEUED' }); } catch (e) {}
+      }
+      if ('sync' in (window.ServiceWorkerRegistration || {}).prototype) {
+        try { const reg = await navigator.serviceWorker.ready; await reg.sync.register('pixashare-autosync'); } catch (e) {}
+      }
+      kick();
+    }
+    if (skipped) toast(`${skipped} photo${skipped > 1 ? 's' : ''} already in the transfer list`);
+    if (bad) toast(`${bad} file${bad > 1 ? 's' : ''} skipped — only JPG PNG GIF WebP BMP AVIF are supported`);
+  }
+
+  /* ===== wake lock: keeps sending while the screen would sleep ===== */
+  async function wakeOn() {
+    try { if ('wakeLock' in navigator && !S.wakeLock) S.wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+  }
+  function wakeOff() {
+    const active = S.items.some((i) => i.status === 'sending' || i.status === 'waiting');
+    if (!active && S.wakeLock) { try { S.wakeLock.release(); } catch (e) {} S.wakeLock = null; }
+  }
+
+  /* ===== rendering ===== */
+  function renderAcct() {
+    const box = $('acctOut');
+    if (S.email) {
+      box.innerHTML = `
+        <div class="avatar">${(S.email[0] || '?').toUpperCase()}</div>
+        <div class="who">
+          <div class="em">${escapeHtml(S.email)}</div>
+          <div class="st">${hasToken() ? 'Connected to Google Drive ✓' : 'Reconnecting…'}</div>
+        </div>
+        <button class="lnk" id="signOut">Sign out</button>`;
+      $('signOut').addEventListener('click', signOut);
+    }
+  }
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  const CHIP = {
+    waiting: ['wait', 'Waiting'],
+    sending: ['send', 'Sending…'],
+    sent: ['sent', 'Sent ✓'],
+    received: ['rcv', 'Received on PC ✓'],
+    failed: ['fail', 'Failed']
+  };
+  function renderList() {
+    const list = $('list');
+    $('empty').style.display = S.items.length ? 'none' : '';
+    list.innerHTML = S.items.map((it) => {
+      const [cls, label] = CHIP[it.status] || CHIP.waiting;
+      const bar = it.status === 'sending'
+        ? `<div class="bar"><i style="width:${it.progress || 0}%"></i></div>`
+        : (it.status === 'failed' && it.err ? `<div class="sz" style="color:#c0392b">${escapeHtml(it.err)}</div>` : '');
+      const retry = it.status === 'failed' ? `<button class="retry" data-retry="${it.id}">Retry</button>` : '';
+      return `
+      <div class="item" style="padding:7px 0" data-id="${it.id}">
+        <div class="thumb" style="background-image:url('${it.thumb || ''}')">
+          ${it.status === 'received' ? '<span class="badge rcv">✓✓</span>' : it.status === 'sent' ? '<span class="badge">✓</span>' : it.status === 'failed' ? '<span class="badge fail">!</span>' : ''}
+        </div>
+        <div class="meta">
+          <div class="nm">${escapeHtml(it.name)}</div>
+          <div class="sz">${fmtSize(it.size)} &bull; ${fmtTime(it.addedAt)}${it.receivedAt ? ' &bull; reached PC ' + fmtTime(it.receivedAt) : ''}</div>
+          <span class="chip ${cls}">${label}</span>
+          ${bar}
+        </div>
+        ${retry}
+      </div>`;
+    }).join('');
+    list.querySelectorAll('[data-retry]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const it = S.items.find((i) => i.id === b.getAttribute('data-retry'));
+        if (!it || !it.blob) { toast('This photo needs to be picked again'); return; }
+        it.status = 'waiting'; it.nextTry = 0; it.err = '';
+        saveItem(it); renderList(); kick(true);
+      });
+    });
+  }
+  function paintProgress(it) {
+    const row = document.querySelector(`[data-id="${it.id}"]`);
+    if (!row) return;
+    const bar = row.querySelector('.bar i');
+    if (bar) bar.style.width = (it.progress || 0) + '%';
+  }
+  function saveItem(it) { itPut(it); }
+
+  function updateSub() {
+    const w = S.items.filter((i) => i.status === 'waiting' || i.status === 'failed').length;
+    const s = S.items.filter((i) => i.status === 'sent' || i.status === 'received').length;
+    $('listSub').textContent = S.items.length ? `${s} sent • ${w ? w + ' pending' : 'nothing pending'}` : '';
+  }
+  function updateHeader() {
+    const dot = $('pcDot'), txt = $('pcText');
+    const anyRecv = S.items.some((i) => i.status === 'received');
+    const anySent = S.items.some((i) => i.status === 'sent');
+    if (!S.email) { dot.className = 'dot off'; txt.textContent = 'Sign in to reach your PC'; return; }
+    if (anyRecv) { dot.className = 'dot ok'; txt.textContent = 'PC connected — receiving your photos ✓'; return; }
+    if (S.pcSeen || anySent) { dot.className = 'dot ok'; txt.textContent = 'PC seen in your Drive — waiting to pick up'; return; }
+    if (S.folderId) { dot.className = 'dot'; txt.textContent = 'Drive ready — open PIXA on the PC to receive'; return; }
+    dot.className = 'dot'; txt.textContent = 'Checking for your PC…';
+  }
+  function applySyncUI() {
+    $('syncOn').checked = S.syncOn;
+    $('syncNote').textContent = S.syncOn
+      ? 'ON — the app keeps running in the background and every picked photo sends itself to PIXA on your PC.'
+      : 'OFF — photos wait until you turn it on. ON — the app keeps running in the background and every picked photo sends itself to PIXA on your PC.';
+  }
+
+  /* ===== boot ===== */
+  async function boot() {
+    /* app shell + share target + background sync live in share/sw.js —
+       without this registration PIXA SHARE would never be installable,
+       would never appear in the Android share sheet and could not send
+       with the app closed */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then((reg) => {
+          /* a queued update applies on the next open (the worker skip-waits) */
+          try { reg.update().catch(() => {}); } catch (e) {}
+        }).catch(() => {});
+      });
+    }
+    sessLoad();
+    await idsLoad();
+    try { S.syncOn = (await kvGet('syncOn')) === true; } catch (e) {}
+    applySyncUI();
+    renderAcct();
+    /* pending items from the last session (blobs were persisted too) */
+    try {
+      const all = await itAll();
+      all.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+      /* keep the transfer history bounded — finished items beyond the cap
+         (oldest first) are dropped from the list and the storage */
+      if (all.length > 250) {
+        for (const old of all.slice(250)) {
+          if (old.status === 'waiting' || old.status === 'failed' || old.status === 'sending') continue;
+          await itDel(old.id);
+        }
+      }
+      for (const it of all.slice(0, 250)) {
+        if (it.status === 'sending') { it.status = it.blob ? 'waiting' : 'failed'; it.err = it.blob ? '' : 'Interrupted — pick the photo again'; }
+        S.items.push(it);
+      }
+    } catch (e) {}
+    renderList(); updateSub(); updateHeader();
+
+    /* Android share-target handoff: Gallery → Share → PIXA SHARE */
+    if (new URLSearchParams(location.search).has('shared')) {
+      try { history.replaceState(null, '', location.pathname); } catch (e) {}
+      await ingestShared();
+    }
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        if (e.data && e.data.type === 'SHARED_FILES') ingestShared();
+        if (e.data && e.data.type === 'PIXASHARE_SYNC') kick();
+      });
+    }
+
+    /* silent reconnect like the PC app (only ever on the official origin) */
+    if (!hasToken() && S.email && originAllowed()) {
+      const t = await silentRenew();
+      if (t) { renderAcct(); kick(); }
+    }
+
+    /* wire */
+    $('syncOn').addEventListener('change', async (e) => {
+      S.syncOn = e.target.checked;
+      await kvSet('syncOn', S.syncOn);
+      applySyncUI();
+      if (S.syncOn) { if (!S.email) toast('Sign in first — the photos go through your Google Drive'); wakeOn(); kick(); }
+      else toast('Auto send paused — queued photos are kept');
+    });
+    $('pick').addEventListener('click', () => { if (!S.email) toast('Tip: sign in first so photos can leave the phone'); $('file').click(); });
+    $('file').addEventListener('change', (e) => { onPick([...(e.target.files || [])]); e.target.value = ''; });
+    $('signIn').addEventListener('click', signIn);
+
+    /* install prompt */
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      S.deferredInstall = e;
+      $('installRow').style.display = '';
+    });
+    $('installBtn').addEventListener('click', async () => {
+      if (!S.deferredInstall) return;
+      S.deferredInstall.prompt();
+      try { await S.deferredInstall.userChoice; } catch (e) {}
+      S.deferredInstall = null;
+      $('installRow').style.display = 'none';
+    });
+
+    /* retry ticker + network events */
+    setInterval(() => { if (S.syncOn) kick(); }, 15000);
+    window.addEventListener('online', () => { if (S.syncOn) kick(); });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        if (S.syncOn) kick();
+        if (hasToken()) manifestLoop();
+      }
+    });
+    if (hasToken()) { manifestLoop(); updateHeader(); }
+  }
+
+  /* files dropped into the queue cache by share/sw.js (Share → PIXA SHARE) */
+  async function ingestShared() {
+    if (!('caches' in window)) return;
+    try {
+      const cache = await caches.open('pixashare-shared-v1');
+      const qRes = await cache.match(location.origin + '/__shared__/__queue__');
+      let keys = [];
+      if (qRes) { try { keys = (await qRes.json()).keys || []; } catch (e) {} }
+      keys = [...new Set(keys)];
+      if (!keys.length) return;
+      const files = [];
+      for (const k of keys) {
+        const res = await cache.match(k);
+        if (!res) continue;
+        const blob = await res.blob();
+        const raw = k.split('/__shared__/')[1] || 'photo';
+        const name = decodeURIComponent(raw.replace(/^\d+-\d+-/, ''));
+        files.push(new File([blob], name, { type: blob.type || 'image/jpeg' }));
+        await cache.delete(k);
+      }
+      await cache.put(location.origin + '/__shared__/__queue__',
+        new Response(JSON.stringify({ keys: [], at: new Date().toISOString() }), { headers: { 'Content-Type': 'application/json' } }));
+      if (files.length) await onPick(files);
+    } catch (e) { /* best-effort */ }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
