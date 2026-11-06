@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192-v2.png" />
 <style>
   /* ============================================================
-     PIXA SHARE — clean InShare-style mobile sender (v1.4.1)
+     PIXA SHARE — clean InShare-style mobile sender (v1.4.2)
      v1.2.0: the full PIXA brand identity — same Picasa wheel app icon as
      PIXA on the PC (cache-busted -v2 filenames so Android refreshes the
      launcher icon + name), and the header now carries the animated PIXA
@@ -30,6 +30,9 @@
      own oauth.html (standard OAuth implicit flow): it saves the token in
      localStorage and hops back into the app shell. Needs the redirect URI
      registered once in the Google console.
+     v1.4.2: that registration is DONE (Google now serves the real sign-in
+     page for our auth URL) and the sign-in toasts every step — page opening,
+     stuck-page recovery, network failure — so it can never look blank.
      Same Google account as PIXA on the PC. Photos travel through
      the user's own Google Drive ("SHIVAM PIXA" folder) at ORIGINAL
      bytes — same size, same resolution, same ratio, nothing is
@@ -288,7 +291,7 @@
     <p class="apkline" id="apkLine"><b>Android app</b> (full-screen, no browser needed): <a href="./app/pixa-share.apk" download>Download pixa-share.apk</a> &mdash; own icon, Gallery &rarr; Share &rarr; PIXA SHARE, works exactly like a native app.</p>
 
     <p class="note"><b>Originals only</b> — photos reach the PC with the same size, same resolution and same ratio. Nothing is compressed. Works over <b>WiFi and mobile data</b> both, through your own Google Drive.</p>
-    <span class="ver" id="verLine">v1.4.1</span>
+    <span class="ver" id="verLine">v1.4.2</span>
   </main>
 
   <input type="file" id="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif" multiple hidden />
@@ -462,6 +465,9 @@
         + '&state=' + encodeURIComponent(state)
         + '&include_granted_scopes=true'
         + (prompt ? '&prompt=' + encodeURIComponent(prompt) : '');
+      /* the auth URL itself must be clean — a stray space/CR in any part
+         makes Google show a bare error page that reads as a blank screen */
+      toast('Google sign-in opening — pick your account', 3200);
       const w = { resolve, reject, tm: 0 };
       appAuth = w;
       w.tm = setTimeout(() => {

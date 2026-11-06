@@ -1,4 +1,4 @@
-/* PIXA SHARE — Service Worker (v1.4.1)
+/* PIXA SHARE — Service Worker (v1.4.2)
    Standalone app — lives in its own repo (utelinor-hub/Pixa-share),
    deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
@@ -36,9 +36,13 @@
       hangs (the blank dark screen). In-app sign-in now ends with a REAL
       redirect to ./oauth.html (standard implicit flow) which saves the
       token and hops back. oauth.html is precached — it is 20 lines of
-      static JS and must never go stale. */
+      static JS and must never go stale.
+   9. v1.4.2 — the redirect URI is registered in the Google console now
+      (the probe returns the real sign-in page), and both the page and
+      the APK shell toast what the sign-in is doing at every step, so a
+      silent hang can never look like a blank screen again. */
 
-const VERSION = 'v1.4.1';
+const VERSION = 'v1.4.2';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 

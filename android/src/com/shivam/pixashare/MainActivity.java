@@ -156,6 +156,8 @@ public class MainActivity extends Activity {
                     authStarted = false;                    /* the Google page itself failed */
                     pendingAuthJson = "{\"error\":\"network\"}";
                     authRetry = true;
+                    Toast.makeText(MainActivity.this,
+                            "Connection problem — press Sign in again", Toast.LENGTH_LONG).show();
                     web.loadUrl(APP_URL);
                 }
             }
@@ -311,8 +313,11 @@ public class MainActivity extends Activity {
         authWatch.postDelayed(new Runnable() { public void run() {
             if (gen != authGen || !authStarted || web == null) return;
             authStarted = false;
+            Toast.makeText(MainActivity.this,
+                    "Google page stuck — back to the app, press Sign in again", Toast.LENGTH_LONG).show();
             web.loadUrl(APP_URL);
         }}, url.contains("prompt=none") ? 30000L : 180000L);
+        Toast.makeText(this, "Opening Google sign-in…", Toast.LENGTH_SHORT).show();
         web.loadUrl(url);
     }
 
