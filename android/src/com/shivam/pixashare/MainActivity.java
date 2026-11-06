@@ -12,6 +12,7 @@ import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.ValueCallback;
@@ -196,6 +197,16 @@ public class MainActivity extends Activity {
         });
 
         web.addJavascriptInterface(new Bridge(), "pixaNative");
+
+        /* the in-app "Download pixa-share.apk" link — a WebView would try to
+           render the file inline, so hand downloads to the system (Chrome
+           downloads it, then Android offers the install) */
+        web.setDownloadListener(new DownloadListener() {
+            public void onDownloadStart(String url, String ua, String cd, String mime, long len) {
+                try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }
+                catch (Exception ignored) {}
+            }
+        });
 
         if (savedInstanceState != null) {
             web.restoreState(savedInstanceState);
