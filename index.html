@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192-v2.png" />
 <style>
   /* ============================================================
-     PIXA SHARE — clean InShare-style mobile sender (v1.4.0)
+     PIXA SHARE — clean InShare-style mobile sender (v1.4.1)
      v1.2.0: the full PIXA brand identity — same Picasa wheel app icon as
      PIXA on the PC (cache-busted -v2 filenames so Android refreshes the
      launcher icon + name), and the header now carries the animated PIXA
@@ -24,6 +24,12 @@
      the bridge opens accounts.google.com, Google ends on the storagerelay://
      redirect the app intercepts and hands the token back to the page. The
      browser/PWA flow is untouched (still the GIS popup).
+     v1.4.1: the storagerelay relay turns out to need a POPUP OPENER — run
+     as a full page it just hangs on an invisible Google page (the blank
+     dark screen). In the app the OAuth now ends with a REAL redirect to our
+     own oauth.html (standard OAuth implicit flow): it saves the token in
+     localStorage and hops back into the app shell. Needs the redirect URI
+     registered once in the Google console.
      Same Google account as PIXA on the PC. Photos travel through
      the user's own Google Drive ("SHIVAM PIXA" folder) at ORIGINAL
      bytes — same size, same resolution, same ratio, nothing is
@@ -282,7 +288,7 @@
     <p class="apkline" id="apkLine"><b>Android app</b> (full-screen, no browser needed): <a href="./app/pixa-share.apk" download>Download pixa-share.apk</a> &mdash; own icon, Gallery &rarr; Share &rarr; PIXA SHARE, works exactly like a native app.</p>
 
     <p class="note"><b>Originals only</b> — photos reach the PC with the same size, same resolution and same ratio. Nothing is compressed. Works over <b>WiFi and mobile data</b> both, through your own Google Drive.</p>
-    <span class="ver" id="verLine">v1.4.0</span>
+    <span class="ver" id="verLine">v1.4.1</span>
   </main>
 
   <input type="file" id="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif" multiple hidden />
@@ -437,15 +443,25 @@
     return new Promise((resolve, reject) => {
       if (!IN_APP()) { reject(new Error('Sign-in bridge not available')); return; }
       const state = 'px' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      /* Google ends the flow with a REAL redirect to our own oauth.html —
+         the WebView loads it, it saves the response and hops back into the
+         app shell (consumeOAuthResult on boot completes the sign-in).
+         The GIS storagerelay relay needs a popup opener; run as a full page
+         it just hangs — that was the blank dark-blue screen (v1.4.0). */
+      const redirect = location.origin + location.pathname + 'oauth.html';
+      try { localStorage.setItem('pixashare.oauthState', state); } catch (e) {}
+      /* "consent" would force the consent screen on EVERY sign-in — in the
+         app just pick the account (Google re-asks consent when it needs to) */
+      const prompt = (promptMode || '').replace(/\bconsent\b/g, '').trim();
       const url = 'https://accounts.google.com/o/oauth2/v2/auth'
         + '?client_id=' + encodeURIComponent(CLIENT_ID)
         + '&response_type=token'
         + '&scope=' + encodeURIComponent(SCOPE)
-        + '&redirect_uri=' + encodeURIComponent('storagerelay://https/utelinor-hub.github.io?id=' + state)
+        + '&redirect_uri=' + encodeURIComponent(redirect)
         + '&origin=' + encodeURIComponent(location.origin)
         + '&state=' + encodeURIComponent(state)
         + '&include_granted_scopes=true'
-        + (promptMode ? '&prompt=' + encodeURIComponent(promptMode) : '');
+        + (prompt ? '&prompt=' + encodeURIComponent(prompt) : '');
       const w = { resolve, reject, tm: 0 };
       appAuth = w;
       w.tm = setTimeout(() => {
@@ -454,6 +470,28 @@
       try { window.pixaNative.openAuth(url); }
       catch (e) { clearTimeout(w.tm); if (appAuth === w) { appAuth = null; reject(e); } }
     });
+  }
+  /* consume the oauth.html landing (boot): completes the sign-in */
+  function consumeOAuthResult() {
+    let p = null;
+    try { p = JSON.parse(localStorage.getItem('pixashare.oauth') || 'null'); } catch (e) { p = null; }
+    try { localStorage.removeItem('pixashare.oauth'); } catch (e) {}
+    if (!p) return;
+    let want = '';
+    try { want = localStorage.getItem('pixashare.oauthState') || ''; localStorage.removeItem('pixashare.oauthState'); } catch (e) {}
+    if (p.access_token) {
+      if (p.state && want && p.state !== want) { toast('Sign-in could not be verified — try again', 5200); return; }
+      storeToken(p);
+      renderAcct();
+      toast('Signed in');
+      kick();
+      manifestLoop();
+      gfetch(`${DRIVE}/about?fields=user`).then((r) => r.ok ? r.json() : null).then((j) => {
+        if (j && j.user) { S.email = j.user.emailAddress || ''; sessSave(); renderAcct(); }
+      }).catch(() => {});
+    } else if (p.error && p.error !== 'login_required') {
+      toast('Sign-in did not finish (' + p.error + ')', 5200);
+    }
   }
 
   /* ===== Google Identity Services (same client as the PC app) ===== */
@@ -987,6 +1025,7 @@
       }
     }
     sessLoad();
+    consumeOAuthResult();
     await idsLoad();
     try { S.syncOn = (await kvGet('syncOn')) === true; } catch (e) {}
     applySyncUI();

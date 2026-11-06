@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>PIXA SHARE — signing in…</title>
+<meta name="robots" content="noindex" />
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans',sans-serif;
+         background:#eef3f9; color:#14243a; }
+  .box { text-align:center; }
+  .wheel { width:52px; height:52px; border-radius:50%; margin:0 auto 14px;
+           background:conic-gradient(#f43935,#ffc40d,#0063fa,#009f59,#f43935);
+           -webkit-mask:radial-gradient(circle, transparent 38%, #000 39%);
+           mask:radial-gradient(circle, transparent 38%, #000 39%);
+           animation:spin 2.4s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  p { margin:0; font-size:15px; opacity:.75; }
+</style>
+</head>
+<body>
+<div class="box"><div class="wheel"></div><p id="msg">Finishing sign-in…</p></div>
+<script>
+(() => {
+  'use strict';
+  /* PIXA SHARE — OAuth redirect landing page (v1.4.1).
+     Google ends the in-app sign-in with a REAL redirect to this page:
+     .../oauth.html#access_token=…&expires_in=…&scope=…&state=…  (or #error=…)
+     This page hands the response to the app through localStorage and hops
+     back to the app shell. It never changes, so a stale service-worker
+     cache can never break sign-in. */
+  let p = {};
+  try {
+    (location.hash || '').replace(/^#/, '').split('&').forEach((kv) => {
+      if (!kv) return;
+      const i = kv.indexOf('=');
+      const k = i < 0 ? kv : kv.slice(0, i);
+      const v = i < 0 ? '' : decodeURIComponent(kv.slice(i + 1).replace(/\+/g, '%20'));
+      p[k] = v;
+    });
+  } catch (e) {}
+  const hadResp = !!(p.access_token || p.error);
+  if (hadResp) {
+    const res = p.access_token
+      ? { access_token: p.access_token, expires_in: Number(p.expires_in) || 3600, scope: p.scope || '', state: p.state || '' }
+      : { error: p.error || 'cancelled' };
+    try { localStorage.setItem('pixashare.oauth', JSON.stringify(res)); } catch (e) {}
+  }
+  setTimeout(() => { location.replace('./index.html'); }, 150);
+})();
+</script>
+</body>
+</html>

@@ -84,4 +84,23 @@ sender and receiver agree on a file format.
   gets `redirect_uri_mismatch`, ours gets the real sign-in page.
 - Browser/PWA sign-in is untouched (still the GIS popup).
 
+## The blank-screen fix (v1.4.1)
+
+- v1.4.0's storagerelay delivery turned out to need a **popup opener**:
+  run as a full page, Google's relay page just hangs after consent —
+  an invisible page over the WebView's dark background = the blank
+  dark-blue screen users saw right after signing in.
+- Fix: the in-app OAuth now ends with a **real redirect to our own
+  `oauth.html`** (standard OAuth implicit flow). Google 302s there with
+  `#access_token=…`; the page (20 lines of static JS, precached) saves
+  the response in localStorage and hops back into the app shell, where
+  boot code (`consumeOAuthResult`) completes the sign-in.
+- **One-time Google Console step** (required): console.cloud.google.com →
+  APIs & Services → Credentials → the PIXA OAuth client →
+  Authorized redirect URIs → add
+  `https://utelinor-hub.github.io/Pixa-share/oauth.html`
+- APK hardening: a 3-min watchdog brings the user back from any hung
+  Google page (30 s for silent renew), and popup-window redirects route
+  the OAuth response through the collector instead of raw loadUrl.
+
 © SHIVAM PIXA project.

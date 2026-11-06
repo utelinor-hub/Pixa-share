@@ -1,4 +1,4 @@
-/* PIXA SHARE — Service Worker (v1.4.0)
+/* PIXA SHARE — Service Worker (v1.4.1)
    Standalone app — lives in its own repo (utelinor-hub/Pixa-share),
    deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
@@ -31,9 +31,14 @@
    7. v1.4.0 — Google sign-in fixed inside the APK: the WebView has no
       popups, so in-app sign-in goes full-page (bridge → accounts.google.com
       → storagerelay:// redirect → back). Shell changes: none, just the
-      version. */
+      version.
+   8. v1.4.1 — the storagerelay relay needs a popup opener; full-page it
+      hangs (the blank dark screen). In-app sign-in now ends with a REAL
+      redirect to ./oauth.html (standard implicit flow) which saves the
+      token and hops back. oauth.html is precached — it is 20 lines of
+      static JS and must never go stale. */
 
-const VERSION = 'v1.4.0';
+const VERSION = 'v1.4.1';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 
@@ -45,6 +50,7 @@ const IMG_EXT = /\.(jpe?g|png|gif|webp|bmp|avif)$/i;
 const ASSETS = [
   './',
   './index.html',
+  './oauth.html',
   './manifest.webmanifest',
   './icons/favicon-v2.png',
   './icons/icon-192-v2.png',

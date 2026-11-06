@@ -7,6 +7,7 @@ import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.Message;
 import android.provider.OpenableColumns;
 import android.util.Base64;
@@ -66,10 +67,12 @@ public class MainActivity extends Activity {
     private WebView web;
     private ValueCallback<Uri[]> fileCb;
 
-    /* in-app Google sign-in state (v1.4.0) */
+    /* in-app Google sign-in state (v1.4.x) */
     private String pendingAuthJson = null;   /* token/error waiting to reach the page */
     private boolean authStarted = false;     /* a Google auth page is (probably) showing   */
     private boolean authRetry = false;       /* recovery reload for the auth response    */
+    private final Handler authWatch = new Handler();
+    private int authGen = 0;                 /* cancels the watchdog when superseded     */
 
     /* shared-photo handoff queue (file names inside cacheDir/shared) */
     private final ArrayList<String> pendingNames = new ArrayList<String>();
@@ -132,6 +135,7 @@ public class MainActivity extends Activity {
                 if (url != null && url.startsWith(APP_URL)) {
                     authStarted = false;
                     authRetry = false;
+                    authGen++;                       /* cancels the watchdog */
                     if (pendingAuthJson != null) {
                         String j = pendingAuthJson;
                         pendingAuthJson = null;
@@ -167,6 +171,14 @@ public class MainActivity extends Activity {
                 tmp.setWebViewClient(new WebViewClient() {
                     @Override
                     public boolean shouldOverrideUrlLoading(WebView v2, String u2) {
+                        /* the OAuth response must go through the collector —
+                           web.loadUrl() would BYPASS the main client's
+                           shouldOverrideUrlLoading and die on the unknown
+                           scheme (v1.4.1 fix) */
+                        if (u2 != null && u2.startsWith("storagerelay://")) {
+                            collectAuthResponse(u2);
+                            return true;
+                        }
                         web.loadUrl(u2);
                         return true;
                     }
@@ -291,6 +303,16 @@ public class MainActivity extends Activity {
         if (url == null || !url.startsWith("https://accounts.google.com/o/oauth2/")) return;
         authStarted = true;
         authRetry = false;
+        /* watchdog: if Google's pages ever strand the user (a hung silent
+           check, a relay page that never navigates — the v1.4.0 blank dark
+           screen), bring them back to the app. Silent renew (prompt=none)
+           should bounce in seconds; interactive sign-in gets real time. */
+        final int gen = ++authGen;
+        authWatch.postDelayed(new Runnable() { public void run() {
+            if (gen != authGen || !authStarted || web == null) return;
+            authStarted = false;
+            web.loadUrl(APP_URL);
+        }}, url.contains("prompt=none") ? 30000L : 180000L);
         web.loadUrl(url);
     }
 
@@ -328,6 +350,7 @@ public class MainActivity extends Activity {
             json = "{\"error\":" + jsonEsc(err == null || err.length() == 0 ? "login_required" : err) + "}";
         }
         authStarted = false;
+        authGen++;                               /* cancels the watchdog */
         pendingAuthJson = json;
         web.loadUrl(APP_URL);   /* back to the app; delivered in onPageFinished */
     }
