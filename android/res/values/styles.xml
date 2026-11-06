@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- PIXA SHARE splash colour = the header navy; no action bar anywhere -->
+  <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+    <item name="android:windowBackground">@color/bg</item>
+    <item name="android:colorPrimary">@color/primaryDark</item>
+    <item name="android:colorPrimaryDark">@color/primaryDark</item>
+    <item name="android:colorAccent">@color/primaryDark</item>
+    <item name="android:statusBarColor">@color/primaryDark</item>
+    <item name="android:navigationBarColor">@color/primaryDark</item>
+    <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+  </style>
+</resources>

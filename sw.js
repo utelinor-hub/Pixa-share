@@ -1,4 +1,4 @@
-/* PIXA SHARE — Service Worker (v1.2.0)
+/* PIXA SHARE — Service Worker (v1.3.0)
    Standalone app — lives in its own repo (utelinor-hub/Pixa-share),
    deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
@@ -23,9 +23,13 @@
       -v2 filenames (same Picasa wheel artwork as PIXA on the PC) so
       Android refreshes the launcher icon + app name, and the shell now
       carries the animated header logo pieces (logo-ring-v2 spins,
-      logo-core-v2 stays still). */
+      logo-core-v2 stays still).
+   6. v1.3.0 — the REAL Android app: app/pixa-share.apk (full-screen
+      native shell, own icon, Gallery Share target, photo picker — no
+      browser dependency) is precached so the download link works
+      offline too. */
 
-const VERSION = 'v1.2.0';
+const VERSION = 'v1.3.0';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 
@@ -43,7 +47,8 @@ const ASSETS = [
   './icons/icon-512-v2.png',
   './icons/icon-maskable-512-v2.png',
   './icons/logo-ring-v2.png',
-  './icons/logo-core-v2.png'
+  './icons/logo-core-v2.png',
+  './app/pixa-share.apk'
 ];
 
 self.addEventListener('install', (e) => {

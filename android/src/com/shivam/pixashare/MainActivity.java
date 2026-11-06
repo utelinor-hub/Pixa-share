@@ -1,0 +1,329 @@
+package com.shivam.pixashare;
+
+import android.app.Activity;
+import android.content.ClipData;
+import android.content.Intent;
+import android.database.Cursor;
+import android.graphics.Color;
+import android.net.Uri;
+import android.os.Bundle;
+import android.provider.OpenableColumns;
+import android.util.Base64;
+import android.view.ViewGroup;
+import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebChromeClient;
+import android.webkit.ValueCallback;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.Toast;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+
+/**
+ * PIXA SHARE — the real Android app.
+ *
+ * A full-screen WebView (part of Android itself, NOT the user's browser)
+ * that runs the PIXA SHARE app. Nothing about the app changes — the same
+ * page, the same Google Drive protocol — but the phone now treats it as
+ * a native application:
+ *
+ *  - own icon + name on the home screen, opens full-screen (no URL bar,
+ *    no tabs, no browser UI of any kind)
+ *  - Gallery -> Share -> PIXA SHARE lands here as a REAL app target
+ *    (ACTION_SEND / ACTION_SEND_MULTIPLE); photos are copied into the
+ *    app cache and handed to the page through a tiny JS bridge that
+ *    feeds the page's own hidden file input — the exact same queue,
+ *    progress list and Drive upload path as picking by hand
+ *  - the page's "Pick photos to send" button opens the Android photo
+ *    picker (onShowFileChooser)
+ *  - Google sign-in happens inside the app (third-party cookies on,
+ *    a plain Chrome mobile user agent — the standard WebView setup)
+ *  - service worker + IndexedDB keep working, so offline start and the
+ *    update pipeline behave like on Chrome
+ */
+public class MainActivity extends Activity {
+
+    private static final String APP_URL = "https://utelinor-hub.github.io/Pixa-share/";
+    private static final int REQ_PICK = 100;
+
+    private WebView web;
+    private ValueCallback<Uri[]> fileCb;
+
+    /* shared-photo handoff queue (file names inside cacheDir/shared) */
+    private final ArrayList<String> pendingNames = new ArrayList<String>();
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        web = new WebView(this);
+        web.setBackgroundColor(Color.parseColor("#0D3B66"));
+        setContentView(web, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        WebSettings s = web.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);        /* IndexedDB queue + kv store */
+        s.setDatabaseEnabled(true);
+        s.setAllowContentAccess(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
+        /* plain Chrome mobile UA — Google sign-in refuses embedded WebViews
+           that identify themselves as WebView */
+        s.setUserAgentString(
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) " +
+            "Chrome/124.0.0.0 Mobile Safari/537.36");
+
+        CookieManager cm = CookieManager.getInstance();
+        cm.setAcceptCookie(true);
+        cm.setAcceptThirdPartyCookies(web, true);
+
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView v, String url) {
+                String h = Uri.parse(url).getHost();
+                if (h == null) h = "";
+                /* the app itself + Google sign-in/Drive stay inside the app;
+                   everything else (help pages etc.) opens outside */
+                if (h.equals("utelinor-hub.github.io")
+                        || h.endsWith("google.com")
+                        || h.endsWith("googleapis.com")
+                        || h.endsWith("gstatic.com")
+                        || h.endsWith("googleusercontent.com")) {
+                    return false;
+                }
+                try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) {}
+                return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView v, String url) {
+                drainShared();
+            }
+        });
+
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb,
+                                             FileChooserParams params) {
+                if (fileCb != null) fileCb.onReceiveValue(null);
+                fileCb = cb;
+                try {
+                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    i.setType("image/*");
+                    i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                    startActivityForResult(Intent.createChooser(i, "Select photos"), REQ_PICK);
+                } catch (Exception e) {
+                    fileCb = null;
+                    return false;
+                }
+                return true;
+            }
+        });
+
+        web.addJavascriptInterface(new Bridge(), "pixaNative");
+
+        if (savedInstanceState != null) {
+            web.restoreState(savedInstanceState);
+        } else {
+            web.loadUrl(APP_URL);
+        }
+
+        handleSend(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleSend(intent);
+    }
+
+    /* ---------- Gallery -> Share -> PIXA SHARE ---------- */
+
+    private void handleSend(Intent i) {
+        if (i == null || i.getAction() == null || i.getType() == null) return;
+        if (!i.getType().startsWith("image/")) return;
+
+        ArrayList<Uri> uris = new ArrayList<Uri>();
+        if (Intent.ACTION_SEND.equals(i.getAction())) {
+            Uri u = i.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (u != null) uris.add(u);
+        } else if (Intent.ACTION_SEND_MULTIPLE.equals(i.getAction())) {
+            ArrayList<Uri> list = i.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            if (list != null) uris.addAll(list);
+        } else {
+            return;
+        }
+        if (uris.isEmpty()) return;
+
+        File dir = new File(getCacheDir(), "shared");
+        dir.mkdirs();
+        File[] stale = dir.listFiles();
+        if (stale != null) for (File f : stale) f.delete();
+        pendingNames.clear();
+
+        long stamp = System.currentTimeMillis();
+        int n = 0, failed = 0;
+        for (Uri u : uris) {
+            try {
+                String name = queryName(u);
+                if (name == null || name.trim().length() == 0) name = "photo-" + stamp + "-" + n + ".jpg";
+                name = stamp + "-" + n + "-" + name.replaceAll("[^\\w.\\- ]+", "_");
+                if (!name.toLowerCase().matches(".*\\.(jpe?g|png|gif|webp|bmp|avif)$")) name += ".jpg";
+                String mime = getTypeSafe(u);
+                InputStream in = getContentResolver().openInputStream(u);
+                OutputStream os = new FileOutputStream(new File(dir, name));
+                byte[] buf = new byte[65536];
+                int r;
+                while ((r = in.read(buf)) > 0) os.write(buf, 0, r);
+                os.close();
+                in.close();
+                pendingNames.add(name + "\n" + mime);
+                n++;
+            } catch (Exception e) {
+                failed++;
+            }
+        }
+        if (failed > 0) Toast.makeText(this, "Could not read " + failed + " shared photo(s)", Toast.LENGTH_SHORT).show();
+        if (n > 0) {
+            Toast.makeText(this, "PIXA SHARE — " + n + " photo(s) added to the send queue", Toast.LENGTH_LONG).show();
+            drainShared();
+        }
+    }
+
+    private String queryName(Uri u) {
+        try {
+            Cursor c = getContentResolver().query(u, null, null, null, null);
+            if (c != null) {
+                int idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                String nm = (idx >= 0 && c.moveToFirst()) ? c.getString(idx) : null;
+                c.close();
+                if (nm != null) return nm;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private String getTypeSafe(Uri u) {
+        try {
+            String t = getContentResolver().getType(u);
+            if (t != null && t.startsWith("image/")) return t;
+        } catch (Exception ignored) {}
+        return "image/jpeg";
+    }
+
+    /**
+     * Push every queued shared photo into the page: a tiny injected loop
+     * asks the bridge for one file at a time and feeds it to the page's
+     * hidden <input type=file id=file> via DataTransfer — the page's own
+     * change handler (onPick) does the rest. Same path as a hand pick.
+     */
+    private void drainShared() {
+        if (pendingNames.isEmpty() || web == null) return;
+        web.evaluateJavascript(
+            "(function(){if(!window.pixaNative)return;function d(){try{while(true){var raw=window.pixaNative.takeFile();" +
+            "if(!raw||raw==='null')break;var o=JSON.parse(raw);var bin=atob(o.b64);" +
+            "var u8=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);" +
+            "var dt=new DataTransfer();dt.items.add(new File([u8],o.name,{type:o.mime||'image/jpeg'}));" +
+            "var inp=document.getElementById('file');if(!inp)break;inp.files=dt.files;" +
+            "inp.dispatchEvent(new Event('change',{bubbles:true}));}}catch(e){}}" +
+            "if(document.readyState==='complete')d();else window.addEventListener('load',d);})();", null);
+    }
+
+    /**
+     * JS bridge — one shared photo per call, base64 in JSON.
+     * Reads run on the WebView's JavaBridge thread; the file is deleted
+     * only after it has been handed over, so nothing is lost if the page
+     * reloads mid-transfer.
+     */
+    private class Bridge {
+        @JavascriptInterface
+        public String takeFile() {
+            String entry;
+            synchronized (pendingNames) {
+                if (pendingNames.isEmpty()) return "null";
+                entry = pendingNames.remove(0);
+            }
+            int nl = entry.indexOf('\n');
+            String name = entry.substring(0, nl);
+            String mime = entry.substring(nl + 1);
+            try {
+                File f = new File(getCacheDir(), "shared/" + name);
+                FileInputStream in = new FileInputStream(f);
+                ByteArrayOutputStream raw = new ByteArrayOutputStream();
+                byte[] buf = new byte[65536];
+                int r;
+                while ((r = in.read(buf)) > 0) raw.write(buf, 0, r);
+                in.close();
+                String b64 = Base64.encodeToString(raw.toByteArray(), Base64.NO_WRAP);
+                f.delete();
+                return "{\"name\":" + json(name) + ",\"mime\":" + json(mime) + ",\"b64\":\"" + b64 + "\"}";
+            } catch (Exception e) {
+                return "null";
+            }
+        }
+
+        private String json(String s) {
+            StringBuilder sb = new StringBuilder("\"");
+            for (char c : s.toCharArray()) {
+                if (c == '"' || c == '\\') sb.append('\\').append(c);
+                else if (c < 32) sb.append(String.format("\\u%04x", (int) c));
+                else sb.append(c);
+            }
+            return sb.append('"').toString();
+        }
+    }
+
+    /* ---------- photo picker result ---------- */
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_PICK && fileCb != null) {
+            /* parse the picker result by hand — works for single and
+               multi selection on every Android version */
+            Uri[] out = null;
+            if (resultCode == RESULT_OK && data != null) {
+                ClipData cp = data.getClipData();
+                if (cp != null) {
+                    ArrayList<Uri> us = new ArrayList<Uri>();
+                    for (int i = 0; i < cp.getItemCount(); i++) us.add(cp.getItemAt(i).getUri());
+                    out = us.toArray(new Uri[us.size()]);
+                } else if (data.getData() != null) {
+                    out = new Uri[]{ data.getData() };
+                }
+            }
+            fileCb.onReceiveValue(out);
+            fileCb = null;
+        } else {
+            super.onActivityResult(requestCode, resultCode, data);
+        }
+    }
+
+    /* ---------- lifecycle ---------- */
+
+    @Override
+    public void onBackPressed() {
+        if (web != null && web.canGoBack()) web.goBack();
+        else super.onBackPressed();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (web != null) web.saveState(outState);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (web != null) web.destroy();
+        super.onDestroy();
+    }
+}

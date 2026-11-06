@@ -54,4 +54,17 @@ sender and receiver agree on a file format.
   wordmark with a shine sweep. The font is embedded as woff2, so it
   works fully offline.
 
+## The real Android app (v1.3.0)
+
+- `app/pixa-share.apk` — a signed, full-screen native Android app
+  (package `com.shivam.pixashare`, minSdk 24 / targetSdk 34, ~85 KB).
+  No browser dependency: it runs the app in a system WebView with its
+  own icon + name, receives Gallery → Share → PIXA SHARE natively
+  (SEND / SEND_MULTIPLE image/*) and wires the page's photo picker to
+  the Android picker. Download link lives inside the app itself.
+- Sources + reproducible build live in `android/` — run
+  `bash android/build_apk.sh` (aapt2 + ECJ + d8 + zipalign + apksigner,
+  no Gradle / Android Studio needed). The debug keystore is kept in the
+  repo so every future build updates cleanly over the installed app.
+
 © SHIVAM PIXA project.
