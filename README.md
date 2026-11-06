@@ -177,4 +177,21 @@ A pure UI-declutter release, no behaviour change:
   compact "Update PIXA SHARE app" button).
 - APK versionCode 10 (v1.4.5), same debug signature.
 
+## v1.4.6 — fastest sending + animations
+
+Built for big bursts (60-70 photos of 3-4 MB at once):
+
+- **Parallel uploads — 3 photos travel together** instead of one behind
+  the other; a large burst finishes about **3x faster**.
+- Each photo's **small preview now travels ALONGSIDE its original** (not
+  in front of it), so the original lands on Drive sooner.
+- The **progress bar shimmers** and the chip shows a **live per cent**
+  ("Sending… 42%") while a photo is in the air.
+- **Sending animations**: photos rise into the list, the thumbnail
+  pulses while sending, and the row flashes green with a popping ✓ the
+  moment the photo lands on Drive.
+- On the PC, SHIVAM PIXA (v3.30.4+) now probes Drive every 3 seconds,
+  so the very same photos appear on its screen almost immediately.
+- APK versionCode 11 (v1.4.6), same debug signature.
+
 © SHIVAM PIXA project.

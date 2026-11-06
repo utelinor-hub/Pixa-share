@@ -1,4 +1,4 @@
-/* PIXA SHARE — Service Worker (v1.4.5)
+/* PIXA SHARE — Service Worker (v1.4.6)
    Standalone app — lives in its own repo (utelinor-hub/Pixa-share),
    deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
@@ -58,9 +58,13 @@
       Gmail id as a tappable profile chip in the header (Sign out in
       its little menu), no more PC-status line, a one-line Auto send,
       a shining pick button, and the bottom APK / quality notes are
-      gone (the APK link only appears when an old shell needs it). */
+      gone (the APK link only appears when an old shell needs it).
+  13. v1.4.6 — FAST: uploads run 3 photos at a time, each preview
+      travels alongside its original (not in front of it), the
+      progress bar shimmers with a live %, and photos rise in, pulse
+      while sending and flash green with a popping ✓ when they land. */
 
-const VERSION = 'v1.4.5';
+const VERSION = 'v1.4.6';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 
