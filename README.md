@@ -194,4 +194,28 @@ Built for big bursts (60-70 photos of 3-4 MB at once):
   so the very same photos appear on its screen almost immediately.
 - APK versionCode 11 (v1.4.6), same debug signature.
 
+## v1.4.7 — the login survives updates
+
+The fix for "update hone par login bhool jaata hai":
+
+- **Root cause**: a Google access token lives only ~1 hour, and the old
+  code threw the whole identity away the moment it expired — every app
+  update (or the next morning) looked like a forced sign-out, even
+  though the app's storage was never cleared.
+- **The email now stays saved** after the token expires, so the profile
+  chip keeps showing the account the whole time.
+- **The app reconnects by itself**: a silent `prompt=none` bounce runs
+  through the phone's real browser — the browser holds the Google
+  session, Google answers instantly with a fresh token and oauth.html
+  deep-links it back into the app. **Zero taps**, just a one-second
+  browser flash; the same machinery then keeps every later renewal
+  invisible too (a 45 s cooldown stops the retry ticker from hammering
+  Google when there is genuinely no session).
+- Old APK shells (v1.4.2 or older, no browser bridge) keep the old
+  in-WebView silent bounce; new shells route it via `pxbrowser=1`.
+- If a silent reconnect ever fails (no Google session in the browser
+  either), the profile chip now says **"Tap Sign in to reconnect"**
+  instead of pretending forever.
+- APK versionCode 12 (v1.4.7), same debug signature.
+
 © SHIVAM PIXA project.

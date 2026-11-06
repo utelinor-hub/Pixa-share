@@ -60,6 +60,13 @@
      bar shimmers and shows live %, photos rise into the list with an
      animation, pulse while sending and flash green with a popping ✓
      the moment they land on Drive.
+     v1.4.7: the login now SURVIVES app updates and token expiry. The
+     signed-in email stays saved even after the 1-hour access token
+     dies, and the app reconnects BY ITSELF: a silent prompt=none
+     bounce through the phone's real browser (which holds the Google
+     session) returns a fresh token with zero taps — no more signing
+     in again after every update. If the silent reconnect ever fails,
+     the profile chip says exactly that instead of pretending.
      Same Google account as PIXA on the PC. Photos travel through
      the user's own Google Drive ("SHIVAM PIXA" folder) at ORIGINAL
      bytes — same size, same resolution, same ratio, nothing is
@@ -344,7 +351,7 @@
     </div>
 
     <div class="apkupd" id="apkLine" style="display:none"><a href="./app/pixa-share.apk" download>Update PIXA SHARE app</a></div>
-    <span class="ver" id="verLine">v1.4.6</span>
+    <span class="ver" id="verLine">v1.4.7</span>
   </main>
 
   <input type="file" id="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif" multiple hidden />
@@ -387,7 +394,7 @@
     folderId: null, manifestId: null, beatId: null,
     items: [],               /* {id,name,size,type,lastModified,blob,thumb,status,progress,err,fileId,addedAt,sentAt,receivedAt,nextTry} */
     running: false, forceOnce: false,
-    gisLoaded: false, tc: null,
+    gisLoaded: false, tc: null, renewing: false,
     mismatchWarned: false,
     wakeLock: null, deferredInstall: null
   };
@@ -441,12 +448,21 @@
     return c;
   }
 
-  /* ===== session (localStorage for the page, IDB kv for the worker) ===== */
-  function sessLoad() {
-    try {
-      const s = JSON.parse(localStorage.getItem('pixashare.sess') || 'null');
-      if (s && s.token && s.exp && Date.now() < s.exp) { S.token = s.token; S.tokenExp = s.exp; S.email = s.email || ''; }
-    } catch (e) {}
+  /* ===== session (localStorage for the page, IDB kv for the worker) =====
+     v1.4.7: the EMAIL survives token expiry — an expired token used to
+     throw the whole identity away, so every app update / next day
+     looked like "login bhool gaya". Now the email stays, the boot
+     silent reconnect brings a fresh token by itself, and the profile
+     chip shows the account the whole time. localStorage is the primary
+     copy, the IDB kv copy (same one the service worker reads) is the
+     fallback. */
+  async function sessLoad() {
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem('pixashare.sess') || 'null'); } catch (e) {}
+    if (!s) { s = await kvGet('sess').catch(() => null); if (s) { try { localStorage.setItem('pixashare.sess', JSON.stringify(s)); } catch (e) {} } }
+    if (!s) return;
+    if (s.email) S.email = s.email;
+    if (s.token && s.exp) { S.token = s.token; S.tokenExp = s.exp; }  /* expired token is inert — hasToken() gates every use */
   }
   function sessSave() {
     try { localStorage.setItem('pixashare.sess', JSON.stringify({ token: S.token, exp: S.tokenExp, email: S.email })); } catch (e) {}
@@ -499,7 +515,7 @@
     }
   }
   window.__pixaAuthDeliver = appAuthDeliver;    /* the APK calls this */
-  function appAskToken(promptMode) {
+  function appAskToken(promptMode, forceBrowser) {
     return new Promise((resolve, reject) => {
       if (!IN_APP()) { reject(new Error('Sign-in bridge not available')); return; }
       const state = 'px' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
@@ -513,6 +529,7 @@
       /* "consent" would force the consent screen on EVERY sign-in — in the
          app just pick the account (Google re-asks consent when it needs to) */
       const prompt = (promptMode || '').replace(/\bconsent\b/g, '').trim();
+      const silent = prompt === 'none';
       const url = 'https://accounts.google.com/o/oauth2/v2/auth'
         + '?client_id=' + encodeURIComponent(CLIENT_ID)
         + '&response_type=token'
@@ -521,15 +538,17 @@
         + '&origin=' + encodeURIComponent(location.origin)
         + '&state=' + encodeURIComponent(state)
         + '&include_granted_scopes=true'
-        + (prompt ? '&prompt=' + encodeURIComponent(prompt) : '');
+        + (prompt ? '&prompt=' + encodeURIComponent(prompt) : '')
+        + (forceBrowser ? '&pxbrowser=1' : '');   /* v1.4.7: silent renew through the REAL browser */
       /* the auth URL itself must be clean — a stray space/CR in any part
          makes Google show a bare error page that reads as a blank screen */
-      toast('Google sign-in opening — pick your account', 3200);
+      if (!silent) toast('Google sign-in opening — pick your account', 3200);
+      if (appAuth) { try { clearTimeout(appAuth.tm); } catch (e) {} try { appAuth.reject(new Error('cancelled')); } catch (e) {} }
       const w = { resolve, reject, tm: 0 };
       appAuth = w;
       w.tm = setTimeout(() => {
         if (appAuth === w) { appAuth = null; reject(new Error('Google sign-in timed out — try again')); }
-      }, promptMode === 'none' ? 45000 : 240000);
+      }, silent ? 20000 : 240000);
       try { window.pixaNative.openAuth(url); }
       catch (e) { clearTimeout(w.tm); if (appAuth === w) { appAuth = null; reject(e); } }
     });
@@ -599,10 +618,33 @@
       try { tc.requestAccessToken({ prompt: promptMode || '' }); } catch (e) { done(reject, e); }
     });
   }
+  /* v1.4.7: the silent renew that actually WORKS in the app. The WebView's
+     cookie jar has no Google session (interactive sign-in runs in the
+     phone's browser since v1.4.3), so a prompt=none bounce INSIDE the
+     WebView always died with login_required. Now the silent bounce runs
+     in the real browser — Chrome already holds the session, Google
+     302s straight back with a fresh token, oauth.html deep-links it
+     into the app: zero taps. A sessionStorage cooldown keeps the 15 s
+     retry ticker from hammering Google when there is genuinely no
+     session to renew. */
   async function silentRenew() {
     if (!originAllowed()) return null;
-    if (IN_APP() && !navigator.onLine) return null;   /* full-page renew needs network */
-    try { return await askToken('none'); } catch (e) { return null; }
+    if (IN_APP() && !navigator.onLine) return null;   /* renew needs network */
+    const now = Date.now();
+    let last = 0;
+    try { last = Number(sessionStorage.getItem('pixashare.sil') || 0); } catch (e) {}
+    if (now - last < 45000) return null;
+    try { sessionStorage.setItem('pixashare.sil', String(now)); } catch (e) {}
+    S.renewing = true; renderAcct();
+    try {
+      if (IN_APP()) {
+        if (window.pixaNative.hasBrowserAuth && window.pixaNative.hasBrowserAuth()) {
+          try { return await askToken('none', true); } catch (e) { return null; }
+        }
+        try { return await askToken('none'); } catch (e) { return null; }  /* old shells: WebView bounce */
+      }
+      try { return await askToken('none'); } catch (e) { return null; }
+    } finally { S.renewing = false; renderAcct(); }
   }
 
   async function signIn() {
@@ -939,7 +981,7 @@
       $('pav').textContent = (S.email[0] || '?').toUpperCase();
       $('pem').textContent = S.email;
       $('pmEm').textContent = S.email;
-      $('pmSt').textContent = hasToken() ? 'Connected to Google Drive ✓' : 'Reconnecting…';
+      $('pmSt').textContent = hasToken() ? 'Connected to Google Drive ✓' : (S.renewing ? 'Reconnecting to Google Drive…' : 'Tap Sign in to reconnect');
     }
     $('pmenu').classList.remove('open');
   }
@@ -1098,7 +1140,7 @@
         });
       }
     }
-    sessLoad();
+    await sessLoad();
     consumeOAuthResult();
     await idsLoad();
     try { S.syncOn = (await kvGet('syncOn')) === true; } catch (e) {}
@@ -1133,12 +1175,6 @@
         if (e.data && e.data.type === 'SHARED_FILES') ingestShared();
         if (e.data && e.data.type === 'PIXASHARE_SYNC') kick();
       });
-    }
-
-    /* silent reconnect like the PC app (only ever on the official origin) */
-    if (!hasToken() && S.email && originAllowed()) {
-      const t = await silentRenew();
-      if (t) { renderAcct(); kick(); }
     }
 
     /* wire */
@@ -1188,6 +1224,16 @@
     if (hasToken()) {
       manifestLoop();
       findFolder().catch(() => {});   /* warm the Drive folder id */
+    }
+
+    /* v1.4.7: silent reconnect like the PC app (only ever on the official
+       origin) — fires AFTER the UI is wired, never blocks the page, and
+       the browser bounce brings the token back without a single tap */
+    if (!hasToken() && S.email && originAllowed()) {
+      silentRenew().then((t) => {
+        if (t) { renderAcct(); kick(); manifestLoop(); }
+        else if (S.email) renderAcct();   /* chip: "Tap Sign in to reconnect" */
+      }).catch(() => { if (S.email) renderAcct(); });
     }
   }
 

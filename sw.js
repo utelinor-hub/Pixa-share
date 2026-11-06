@@ -1,4 +1,4 @@
-/* PIXA SHARE — Service Worker (v1.4.6)
+/* PIXA SHARE — Service Worker (v1.4.7)
    Standalone app — lives in its own repo (utelinor-hub/Pixa-share),
    deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
@@ -62,9 +62,14 @@
   13. v1.4.6 — FAST: uploads run 3 photos at a time, each preview
       travels alongside its original (not in front of it), the
       progress bar shimmers with a live %, and photos rise in, pulse
-      while sending and flash green with a popping ✓ when they land. */
+      while sending and flash green with a popping ✓ when they land.
+  14. v1.4.7 — the login survives app updates and token expiry: the
+      signed-in email stays saved after the 1-hour access token dies,
+      and a silent prompt=none bounce through the phone's real browser
+      (the one holding the Google session) returns a fresh token with
+      zero taps — no more signing in again after every update. */
 
-const VERSION = 'v1.4.6';
+const VERSION = 'v1.4.7';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 

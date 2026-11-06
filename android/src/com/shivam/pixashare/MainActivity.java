@@ -313,10 +313,15 @@ public class MainActivity extends Activity {
         authRetry = false;
         final int gen = ++authGen;
         final boolean silent = url.contains("prompt=none");
+        /* v1.4.7: pxbrowser=1 marks a SILENT renew that must run in the
+           phone's real browser — the WebView cookie jar has no Google
+           session (interactive sign-in lives in Chrome since v1.4.3),
+           while Chrome answers prompt=none instantly with a fresh token
+           and oauth.html deep-links it back. Zero user taps. */
+        final boolean toBrowser = url.contains("pxbrowser=1");
         /* watchdog: if Google's pages ever strand the user, bring them back
            to the app. Silent renew (prompt=none) should bounce in seconds;
-           interactive sign-in now runs in the phone's browser — it gets a
-           generous window for account picking. */
+           interactive sign-in gets a generous window for account picking. */
         authWatch.postDelayed(new Runnable() { public void run() {
             if (gen != authGen || !authStarted || web == null) return;
             authStarted = false;
@@ -324,7 +329,7 @@ public class MainActivity extends Activity {
                     "Google page stuck — back to the app, press Sign in again", Toast.LENGTH_LONG).show();
             web.loadUrl(APP_URL);
         }}, silent ? 30000L : 600000L);
-        if (silent) {
+        if (silent && !toBrowser) {
             /* token renew: a tiny page bounce inside the WebView — the
                redirect to oauth.html / pixashare:// is caught right here */
             web.loadUrl(url);
@@ -334,11 +339,15 @@ public class MainActivity extends Activity {
                (pure dark-blue screen), while Chrome already holds the user's
                Google session — usually ONE tap on their account. Google then
                redirects to oauth.html, which hands the response back to this
-               app through the pixashare://oauth deep link. */
+               app through the pixashare://oauth deep link. v1.4.7: the same
+               route carries the SILENT reconnect (pxbrowser=1) — Chrome
+               bounces straight back, no account picking at all. */
             try {
                 startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
                 Toast.makeText(this,
-                        "Pick your account in the browser — PIXA SHARE opens again by itself",
+                        toBrowser
+                            ? "Reconnecting to Google Drive…"
+                            : "Pick your account in the browser — PIXA SHARE opens again by itself",
                         Toast.LENGTH_LONG).show();
             } catch (Exception e) {
                 authStarted = false;
