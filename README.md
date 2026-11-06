@@ -103,4 +103,16 @@ sender and receiver agree on a file format.
   Google page (30 s for silent renew), and popup-window redirects route
   the OAuth response through the collector instead of raw loadUrl.
 
+## Sign-in is fully live (v1.4.2)
+
+- The Console step above is **done**: the auth probe now returns the real
+  sign-in page (no more `redirect_uri_mismatch`), so in-app sign-in works
+  end to end: Sign in → Google page → pick account → `oauth.html` saves
+  the token → back in the app, signed in.
+- The sign-in now **toasts every step** (page + APK shell): opening, a
+  stuck Google page (watchdog recovery) and connection failures all say
+  what happened — a silent hang can never look like a blank screen again.
+- Verified live: state-mismatched fake tokens are rejected by
+  `consumeOAuthResult`, matching ones complete the sign-in.
+
 © SHIVAM PIXA project.
