@@ -1,4 +1,4 @@
-/* PIXA SHARE — Service Worker (v1.4.4)
+/* PIXA SHARE — Service Worker (v1.4.5)
    Standalone app — lives in its own repo (utelinor-hub/Pixa-share),
    deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
@@ -53,9 +53,14 @@
       The misleading "Checking for your PC…" state is gone — the header
       now explains that photos upload to Drive first and PIXA on the PC
       picks them up when it turns on. "Auto send" now means BACKGROUND
-      sending only. */
+      sending only.
+  12. v1.4.5 — the clean look: header subtitle "BY S H I V A M", the
+      Gmail id as a tappable profile chip in the header (Sign out in
+      its little menu), no more PC-status line, a one-line Auto send,
+      a shining pick button, and the bottom APK / quality notes are
+      gone (the APK link only appears when an old shell needs it). */
 
-const VERSION = 'v1.4.4';
+const VERSION = 'v1.4.5';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 

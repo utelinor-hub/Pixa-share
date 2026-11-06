@@ -156,4 +156,25 @@ The queue no longer waits for anything:
 - APK versionCode 9 (v1.4.4), same debug signature — installs straight
   over the old one.
 
+## v1.4.5 — the clean look
+
+A pure UI-declutter release, no behaviour change:
+
+- Header subtitle is now **"BY S H I V A M"** (was "PHONE → PC · ORIGINAL
+  QUALITY").
+- The **Gmail id moved into the header as a profile chip** — avatar with
+  the account initial + the email; tapping it opens a small menu with
+  the connection state and **Sign out**. The separate account card is
+  gone.
+- The **PC-status line is gone** from the header — the app talks to
+  Google Drive and does not need to show PC chatter.
+- **Auto send** is a single line (title + switch); the explanatory
+  paragraph under it is gone.
+- The **pick button** got the shine treatment (glow + moving sheen).
+- The bottom **"Android app (full-screen…)"** and **"Originals only"**
+  notes are removed. The APK link now only appears when the app detects
+  an old shell that genuinely needs the update (then it shows as a
+  compact "Update PIXA SHARE app" button).
+- APK versionCode 10 (v1.4.5), same debug signature.
+
 © SHIVAM PIXA project.

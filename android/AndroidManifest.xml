@@ -8,8 +8,8 @@
      Pure android.app / android.webkit — no AndroidX, no Gradle. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.shivam.pixashare"
-    android:versionCode="9"
-    android:versionName="1.4.4">
+    android:versionCode="10"
+    android:versionName="1.4.5">
 
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/>
   <uses-permission android:name="android.permission.INTERNET"/>

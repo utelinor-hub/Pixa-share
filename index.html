@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192-v2.png" />
 <style>
   /* ============================================================
-     PIXA SHARE — clean InShare-style mobile sender (v1.4.4)
+     PIXA SHARE — clean InShare-style mobile sender (v1.4.5)
      v1.2.0: the full PIXA brand identity — same Picasa wheel app icon as
      PIXA on the PC (cache-busted -v2 filenames so Android refreshes the
      launcher icon + name), and the header now carries the animated PIXA
@@ -47,6 +47,13 @@
      turns on). "Auto send" now means BACKGROUND sending (screen off /
      share sheet / wake lock) — it is no longer a gate in front of the
      upload itself.
+     v1.4.5: the clean look — header subtitle is now "BY S H I V A M",
+     the Gmail id moved into the header as a tappable profile chip
+     (Sign out lives in its little menu), the PC-status line is gone,
+     Auto send is a single line with no paragraph under it, the pick
+     button got the shine treatment, and the bottom APK / quality notes
+     are removed (the APK link now only appears when an old shell
+     really needs it).
      Same Google account as PIXA on the PC. Photos travel through
      the user's own Google Drive ("SHIVAM PIXA" folder) at ORIGINAL
      bytes — same size, same resolution, same ratio, nothing is
@@ -70,6 +77,7 @@
     color: #fff; padding: 12px 14px 12px;
     padding-top: calc(12px + env(safe-area-inset-top));
     box-shadow: 0 2px 10px rgba(13,59,102,.28);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
   }
   @font-face {
       font-family: 'Aboreto';
@@ -108,14 +116,39 @@
   }
   .brand-name b { color: #8ec7f5; font-weight: 400; letter-spacing: .22em; margin-left: 4px; }
   .brand .s { font-size: 9.5px; color: #b6c9de; letter-spacing: 1.7px; font-weight: 600; margin-top: 3px; }
-  .pcstat {
-    margin-top: 9px; display: flex; align-items: center; gap: 7px;
-    font-size: 12px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.22);
-    border-radius: 999px; padding: 5px 11px; width: fit-content; max-width: 100%;
+  /* ---------- header profile chip ---------- */
+  .profWrap { position: relative; flex: none; }
+  .prof {
+    display: flex; align-items: center; gap: 8px; color: #fff;
+    background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28);
+    border-radius: 999px; padding: 4px 12px 4px 4px;
   }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: #ffd166; flex: none; }
-  .dot.ok { background: #37e2a2; box-shadow: 0 0 0 3px rgba(55,226,162,.22); }
-  .dot.off { background: #ff8f8f; }
+  .prof:active { background: rgba(255,255,255,.26); }
+  .pav {
+    width: 30px; height: 30px; border-radius: 50%; flex: none;
+    background: linear-gradient(135deg, #ffd166, #ff9f43); color: #14324f;
+    font-weight: 800; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pem { font-size: 12px; font-weight: 650; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pcaret { font-size: 9px; opacity: .85; }
+  .pmenu {
+    display: none; position: absolute; right: 0; top: calc(100% + 8px); z-index: 40;
+    background: #fff; color: #14243a; border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 10px 30px rgba(13,59,102,.28); min-width: 220px; text-align: left;
+  }
+  .pmenu.open { display: block; }
+  .pm-em { font-size: 13px; font-weight: 700; word-break: break-all; }
+  .pm-st { font-size: 11.5px; color: #0a8a63; margin-top: 3px; }
+  .pm-out {
+    margin-top: 10px; width: 100%; border: none; border-radius: 10px; padding: 8px;
+    background: #fdeaea; color: #c0392b; font-weight: 750; font-size: 12.5px;
+  }
+  .gbtn {
+    display: inline-flex; align-items: center; gap: 8px; background: #fff; color: #333;
+    border: 1px solid #d5dde8; border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 650;
+  }
+  .gbtn:active { background: #f2f6fb; }
 
   main { max-width: 560px; margin: 0 auto; padding: 13px 13px 30px; }
   .card {
@@ -124,10 +157,8 @@
   }
 
   /* ---------- sync toggle ---------- */
-  .syncRow { display: flex; align-items: center; gap: 12px; }
-  .syncRow .tx { flex: 1; min-width: 0; }
+  .syncRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .syncRow h2 { margin: 0; font-size: 15.5px; font-weight: 750; }
-  .syncRow p { margin: 3px 0 0; font-size: 12px; color: #5b6b82; line-height: 1.45; }
   .switch { position: relative; width: 58px; height: 32px; flex: none; }
   .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; z-index: 2; cursor: pointer; }
   .knob {
@@ -140,34 +171,23 @@
   .switch input:checked + .knob { background: #0aa574; }
   .switch input:checked + .knob::after { transform: translateX(26px); }
 
-  /* ---------- account ---------- */
-  .acct { display: flex; align-items: center; gap: 11px; }
-  .avatar {
-    width: 40px; height: 40px; border-radius: 50%; flex: none; background: #e8eef6;
-    display: flex; align-items: center; justify-content: center; overflow: hidden;
-    color: #14538c; font-weight: 800; font-size: 16px;
-  }
-  .avatar img { width: 100%; height: 100%; object-fit: cover; }
-  .acct .who { flex: 1; min-width: 0; }
-  .acct .em { font-size: 13.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .acct .st { font-size: 11.5px; color: #5b6b82; margin-top: 2px; }
-  .gbtn {
-    display: inline-flex; align-items: center; gap: 8px; background: #fff; color: #333;
-    border: 1px solid #d5dde8; border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 650;
-  }
-  .gbtn:active { background: #f2f6fb; }
-  .lnk { background: none; border: none; color: #14538c; font-size: 12px; text-decoration: underline; padding: 4px 2px; }
-
   /* ---------- send button ---------- */
   .bigSend {
-    width: 100%; border: none; border-radius: 16px; padding: 15px;
-    background: linear-gradient(135deg, #0aa574, #0cbb84); color: #fff;
-    font-size: 16px; font-weight: 800; letter-spacing: .3px;
-    box-shadow: 0 4px 14px rgba(10,165,116,.32);
-    display: flex; align-items: center; justify-content: center; gap: 9px;
+    width: 100%; border: none; border-radius: 18px; padding: 16px;
+    background: linear-gradient(135deg, #0aa574, #0ecb8f 55%, #0aa574); color: #fff;
+    font-size: 16.5px; font-weight: 800; letter-spacing: .3px;
+    box-shadow: 0 6px 18px rgba(10,165,116,.38), inset 0 1px 0 rgba(255,255,255,.28);
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    position: relative; overflow: hidden;
   }
-  .bigSend:active { transform: translateY(1px); }
-  .bigSend svg { width: 20px; height: 20px; }
+  .bigSend::after {
+    content: ''; position: absolute; top: 0; left: -70%; width: 40%; height: 100%;
+    background: linear-gradient(105deg, transparent, rgba(255,255,255,.35), transparent);
+    animation: shine 3.4s ease-in-out infinite;
+  }
+  @keyframes shine { 0% { left: -70%; } 55% { left: 130%; } 100% { left: 130%; } }
+  .bigSend:active { transform: translateY(1px) scale(.99); }
+  .bigSend svg { width: 22px; height: 22px; padding: 4px; background: rgba(255,255,255,.22); border-radius: 50%; flex: none; }
 
   /* ---------- list ---------- */
   .listTitle { display: flex; align-items: baseline; gap: 8px; margin: 16px 2px 8px; }
@@ -203,8 +223,6 @@
   .empty { text-align: center; color: #7d8ca1; font-size: 13px; padding: 26px 10px; line-height: 1.6; }
   .empty b { color: #44566e; }
 
-  .note { font-size: 11.5px; color: #7d8ca1; line-height: 1.6; margin: 14px 4px 0; text-align: center; }
-  .note b { color: #44566e; }
   .install { margin-top: 10px; text-align: center; }
   .install button {
     border: 1px solid #bcd0e4; background: #fff; color: #14538c; border-radius: 999px;
@@ -237,8 +255,11 @@
   #updRestart { background: linear-gradient(135deg, #0aa574, #0cbb84); color: #fff; font-weight: 800; padding: 8px 15px; border-radius: 999px; box-shadow: 0 2px 8px rgba(10,165,116,.4); }
   #updClose { background: transparent; color: #fff; opacity: .7; padding: 4px 8px; border-radius: 8px; }
   .ver { display: block; margin-top: 5px; font-size: 10.5px; color: #9fb0c3; text-align: center; }
-  .apkline { font-size: 12px; color: #5b6b82; text-align: center; margin: 11px 0 0; line-height: 1.55; padding: 0 6px; }
-  .apkline a { color: #14538c; font-weight: 750; }
+  .apkupd { text-align: center; margin: 12px 0 0; }
+  .apkupd a {
+    display: inline-block; background: #fff; border: 1px solid #d5dde8; color: #14538c;
+    font-weight: 750; font-size: 13px; padding: 9px 16px; border-radius: 999px; text-decoration: none;
+  }
 </style>
 </head>
 <body>
@@ -250,37 +271,35 @@
       </span>
       <div>
         <div class="brand-name"><span class="shine">PIXA</span><b>SHARE</b></div>
-        <div class="s">PHONE &rarr; PC &bull; ORIGINAL QUALITY</div>
+        <div class="s">BY S H I V A M</div>
       </div>
     </div>
-    <div class="pcstat"><span class="dot" id="pcDot"></span><span id="pcText">Starting&hellip;</span></div>
+    <div class="profWrap">
+      <button class="prof" id="profChip" style="display:none" aria-label="Account">
+        <span class="pav" id="pav">?</span>
+        <span class="pem" id="pem"></span>
+        <span class="pcaret">&#9662;</span>
+      </button>
+      <button class="gbtn" id="signIn" style="display:none">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.6c-.1 1.1-.9 2.8-2.5 3.9l3.8 2.9c2.3-2.1 3.6-5.2 3.6-8.7z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.8-2.9c-1 .7-2.4 1.2-4.1 1.2-3.2 0-5.9-2.1-6.8-5l-4 3C3.1 21.3 7.2 24 12 24z"/><path fill="#FBBC05" d="M5.2 14.4c-.2-.7-.4-1.5-.4-2.4s.2-1.7.4-2.4l-4-3.1C.4 8.2 0 10 0 12s.4 3.8 1.2 5.4l4-3z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l3.3-3.2C17.9 1.1 15.2 0 12 0 7.2 0 3.1 2.7 1.2 6.6l4 3.1c.9-2.9 3.6-5 6.8-5z"/></svg>
+        Sign in
+      </button>
+      <div class="pmenu" id="pmenu">
+        <div class="pm-em" id="pmEm"></div>
+        <div class="pm-st" id="pmSt">Connected to Google Drive &#10003;</div>
+        <button class="pm-out" id="signOut">Sign out</button>
+      </div>
+    </div>
   </header>
 
   <main>
     <section class="card">
       <div class="syncRow">
-        <div class="tx">
-          <h2>Auto send (background)</h2>
-          <p id="syncNote">OFF — photos upload to Google Drive as soon as you pick them. ON — the app also keeps working in the background: photos go up even when the screen is off.</p>
-        </div>
+        <h2>Auto send</h2>
         <label class="switch">
-          <input type="checkbox" id="syncOn" aria-label="Auto send (background)" />
+          <input type="checkbox" id="syncOn" aria-label="Auto send" />
           <span class="knob"></span>
         </label>
-      </div>
-    </section>
-
-    <section class="card" id="acctCard">
-      <div class="acct" id="acctOut">
-        <div class="avatar">?</div>
-        <div class="who">
-          <div class="em">Not signed in</div>
-          <div class="st">Sign in with the <b>same Google account</b> as PIXA on your PC</div>
-        </div>
-        <button class="gbtn" id="signIn">
-          <svg viewBox="0 0 24 24" style="width:16px;height:16px"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.6c-.1 1.1-.9 2.8-2.5 3.9l3.8 2.9c2.3-2.1 3.6-5.2 3.6-8.7z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.8-2.9c-1 .7-2.4 1.2-4.1 1.2-3.2 0-5.9-2.1-6.8-5l-4 3C3.1 21.3 7.2 24 12 24z"/><path fill="#FBBC05" d="M5.2 14.4c-.2-.7-.4-1.5-.4-2.4s.2-1.7.4-2.4l-4-3.1C.4 8.2 0 10 0 12s.4 3.8 1.2 5.4l4-3z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l3.3-3.2C17.9 1.1 15.2 0 12 0 7.2 0 3.1 2.7 1.2 6.6l4 3.1c.9-2.9 3.6-5 6.8-5z"/></svg>
-          Sign in
-        </button>
       </div>
     </section>
 
@@ -302,10 +321,8 @@
       <button id="installBtn">Install PIXA SHARE on Home screen</button>
     </div>
 
-    <p class="apkline" id="apkLine"><b>Android app</b> (full-screen, no browser needed): <a href="./app/pixa-share.apk" download>Download pixa-share.apk</a> &mdash; own icon, Gallery &rarr; Share &rarr; PIXA SHARE, works exactly like a native app.</p>
-
-    <p class="note"><b>Originals only</b> — photos reach the PC with the same size, same resolution and same ratio. Nothing is compressed. Works over <b>WiFi and mobile data</b> both, through your own Google Drive.</p>
-    <span class="ver" id="verLine">v1.4.4</span>
+    <div class="apkupd" id="apkLine" style="display:none"><a href="./app/pixa-share.apk" download>Update PIXA SHARE app</a></div>
+    <span class="ver" id="verLine">v1.4.5</span>
   </main>
 
   <input type="file" id="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif" multiple hidden />
@@ -345,7 +362,7 @@
     items: [],               /* {id,name,size,type,lastModified,blob,thumb,status,progress,err,fileId,addedAt,sentAt,receivedAt,nextTry} */
     running: false, forceOnce: false,
     gisLoaded: false, tc: null,
-    pcSeen: false, mismatchWarned: false,
+    mismatchWarned: false,
     wakeLock: null, deferredInstall: null
   };
 
@@ -573,7 +590,8 @@
         /* old APK (v1.4.2 or older): its shell can only show Google inside
            the WebView, which never renders on some phones. The deep-link
            sign-in needs the new shell. */
-        toast('One-time step: tap “Download pixa-share.apk” below, install it, then press Sign in again', 9000);
+        document.getElementById('apkLine').style.display = '';
+        toast('One-time step: tap “Update PIXA SHARE app” below, install it, then press Sign in again', 9000);
         return;
       }
       await askToken('consent select_account');
@@ -743,7 +761,7 @@
       it.status = 'sent'; it.progress = 100; it.sentAt = Date.now();
       delete it.blob;            /* free the phone storage — original is on Drive now */
       saveItem(it); renderList();
-      updateHeader(); updateSub();
+      updateSub();
       wakeOff();
     } catch (e) {
       const msg = String(e.message || e);
@@ -778,7 +796,7 @@
       }
     } finally {
       S.running = false; S.forceOnce = false;
-      updateHeader(); updateSub();
+      updateSub();
     }
   }
 
@@ -794,7 +812,7 @@
         if (!S.items.some((i) => i.status === 'sent' || i.status === 'received')) continue;
         try {
           const mid = await findManifest();
-          if (!mid) { S.pcSeen = false; updateHeader(); continue; }
+          if (!mid) continue;
           const r = await gfetch(`${DRIVE}/files/${mid}?alt=media`);
           if (!r.ok) continue;
           const m = await r.json();
@@ -806,9 +824,7 @@
               saveItem(it);
             }
           }
-          S.pcSeen = true;
           if (fresh) { toast(`${fresh} photo${fresh > 1 ? 's' : ''} received on your PC ✓`); renderList(); }
-          updateHeader();
           /* heartbeat: tell the PC which account this phone uses, so a
              wrong-account sign-in is caught the same minute */
           await upsertHeartbeat();
@@ -882,17 +898,16 @@
 
   /* ===== rendering ===== */
   function renderAcct() {
-    const box = $('acctOut');
-    if (S.email) {
-      box.innerHTML = `
-        <div class="avatar">${(S.email[0] || '?').toUpperCase()}</div>
-        <div class="who">
-          <div class="em">${escapeHtml(S.email)}</div>
-          <div class="st">${hasToken() ? 'Connected to Google Drive ✓' : 'Reconnecting…'}</div>
-        </div>
-        <button class="lnk" id="signOut">Sign out</button>`;
-      $('signOut').addEventListener('click', signOut);
+    const signedIn = !!S.email;
+    $('profChip').style.display = signedIn ? '' : 'none';
+    $('signIn').style.display = signedIn ? 'none' : '';
+    if (signedIn) {
+      $('pav').textContent = (S.email[0] || '?').toUpperCase();
+      $('pem').textContent = S.email;
+      $('pmEm').textContent = S.email;
+      $('pmSt').textContent = hasToken() ? 'Connected to Google Drive ✓' : 'Reconnecting…';
     }
+    $('pmenu').classList.remove('open');
   }
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
@@ -948,24 +963,7 @@
     const s = S.items.filter((i) => i.status === 'sent' || i.status === 'received').length;
     $('listSub').textContent = S.items.length ? `${s} sent • ${w ? w + ' pending' : 'nothing pending'}` : '';
   }
-  function updateHeader() {
-    const dot = $('pcDot'), txt = $('pcText');
-    const anyRecv = S.items.some((i) => i.status === 'received');
-    const anySent = S.items.some((i) => i.status === 'sent');
-    if (!S.email) { dot.className = 'dot off'; txt.textContent = 'Sign in to send photos to Google Drive'; return; }
-    if (anyRecv) { dot.className = 'dot ok'; txt.textContent = 'PC connected — receiving your photos ✓'; return; }
-    if (anySent) { dot.className = 'dot ok'; txt.textContent = 'On Google Drive ✓ — PIXA on the PC picks them up when it turns on'; return; }
-    if (S.pcSeen) { dot.className = 'dot ok'; txt.textContent = 'PC seen in Drive — photos upload first, PC picks them up'; return; }
-    /* v1.4.4: no more "Checking for your PC…" — Drive is all the app needs */
-    dot.className = 'dot ok';
-    txt.textContent = 'Google Drive ready — photos upload even when the PC is off';
-  }
-  function applySyncUI() {
-    $('syncOn').checked = S.syncOn;
-    $('syncNote').textContent = S.syncOn
-      ? 'ON — the app also keeps working in the background: photos go up even when the screen is off. PIXA on the PC picks them up when it turns on.'
-      : 'OFF — photos upload to Google Drive as soon as you pick them. ON — the app also keeps working in the background: photos go up even when the screen is off.';
-  }
+  function applySyncUI() { $('syncOn').checked = S.syncOn; }
 
   /* ===== boot ===== */
   async function boot() {
@@ -1082,7 +1080,7 @@
         S.items.push(it);
       }
     } catch (e) {}
-    renderList(); updateSub(); updateHeader();
+    renderList(); updateSub();
 
     /* Android share-target handoff: Gallery → Share → PIXA SHARE */
     if (new URLSearchParams(location.search).has('shared')) {
@@ -1107,12 +1105,20 @@
       S.syncOn = e.target.checked;
       await kvSet('syncOn', S.syncOn);
       applySyncUI();
-      if (S.syncOn) { if (!S.email) toast('Sign in first — the photos go through your Google Drive'); wakeOn(); kick(); }
-      else toast('Background sending paused — photos still upload to Drive while the app is open');
+      if (S.syncOn) { wakeOn(); kick(); toast('Auto send on — photos also go up in the background'); }
+      else { wakeOff(); toast('Auto send off'); }
     });
     $('pick').addEventListener('click', () => { if (!S.email) toast('Tip: sign in first so photos can leave the phone'); $('file').click(); });
     $('file').addEventListener('change', (e) => { onPick([...(e.target.files || [])]); e.target.value = ''; });
     $('signIn').addEventListener('click', signIn);
+    /* header profile chip: tap to open the little account menu */
+    $('signOut').addEventListener('click', () => { $('pmenu').classList.remove('open'); signOut(); });
+    $('profChip').addEventListener('click', (e) => { e.stopPropagation(); $('pmenu').classList.toggle('open'); });
+    document.addEventListener('click', (e) => {
+      if (!$('pmenu').classList.contains('open')) return;
+      if (e.target.closest && e.target.closest('#pmenu')) return;
+      $('pmenu').classList.remove('open');
+    });
 
     /* install prompt */
     window.addEventListener('beforeinstallprompt', (e) => {
@@ -1139,10 +1145,8 @@
       }
     });
     if (hasToken()) {
-      manifestLoop(); updateHeader();
-      /* find/create the Drive folder right away so the header shows the
-         real state in seconds instead of a forever "checking…" */
-      findFolder().then(() => updateHeader()).catch(() => {});
+      manifestLoop();
+      findFolder().catch(() => {});   /* warm the Drive folder id */
     }
   }
 
