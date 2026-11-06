@@ -115,4 +115,25 @@ sender and receiver agree on a file format.
 - Verified live: state-mismatched fake tokens are rejected by
   `consumeOAuthResult`, matching ones complete the sign-in.
 
+## Sign-in moves to the phone's browser (v1.4.3)
+
+- On some phones Google's pages **never render inside the app's WebView**
+  (a pure dark-blue screen — the WebView's own background colour). No
+  in-WebView flow can work there, so v1.4.3 stops trying:
+  - **Interactive sign-in now opens the phone's real browser** (Chrome
+    already holds the user's Google session — usually one tap).
+  - Google redirects to `oauth.html`, which **hands the response back
+    through the `pixashare://oauth` deep link** (new intent-filter on
+    the APK, versionCode 8). oauth.html also shows a visible
+    "Return to PIXA SHARE" button for browsers that block automatic
+    app hand-off, and falls back to the site flow for PWA users.
+  - **Silent token renew stays inside the WebView** (prompt=none): the
+    redirect to oauth.html / pixashare:// is caught by the app's own
+    WebViewClient and never needs Google's UI to render.
+- The page detects an old shell (`pixaNative.hasBrowserAuth` is missing)
+  and tells the user to install the new APK first.
+- Update pipeline nit fixed: the auto-applied update now reloads the page
+  the same moment the new worker activates (previously the new version
+  only really appeared on the next open).
+
 © SHIVAM PIXA project.

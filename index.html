@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192-v2.png" />
 <style>
   /* ============================================================
-     PIXA SHARE — clean InShare-style mobile sender (v1.4.2)
+     PIXA SHARE — clean InShare-style mobile sender (v1.4.3)
      v1.2.0: the full PIXA brand identity — same Picasa wheel app icon as
      PIXA on the PC (cache-busted -v2 filenames so Android refreshes the
      launcher icon + name), and the header now carries the animated PIXA
@@ -33,6 +33,13 @@
      v1.4.2: that registration is DONE (Google now serves the real sign-in
      page for our auth URL) and the sign-in toasts every step — page opening,
      stuck-page recovery, network failure — so it can never look blank.
+     v1.4.3: on some phones Google's pages simply never render inside the
+     app's WebView (pure dark-blue screen). Interactive sign-in now runs in
+     the PHONE'S REAL BROWSER (Chrome already has the Google session — one
+     tap), and the response comes back through the pixashare://oauth deep
+     link; oauth.html redirects there and offers a visible "Return to PIXA
+     SHARE" button. Silent token renew stays inside the WebView. The update
+     popup now reloads the page the same moment the update applies.
      Same Google account as PIXA on the PC. Photos travel through
      the user's own Google Drive ("SHIVAM PIXA" folder) at ORIGINAL
      bytes — same size, same resolution, same ratio, nothing is
@@ -291,7 +298,7 @@
     <p class="apkline" id="apkLine"><b>Android app</b> (full-screen, no browser needed): <a href="./app/pixa-share.apk" download>Download pixa-share.apk</a> &mdash; own icon, Gallery &rarr; Share &rarr; PIXA SHARE, works exactly like a native app.</p>
 
     <p class="note"><b>Originals only</b> — photos reach the PC with the same size, same resolution and same ratio. Nothing is compressed. Works over <b>WiFi and mobile data</b> both, through your own Google Drive.</p>
-    <span class="ver" id="verLine">v1.4.2</span>
+    <span class="ver" id="verLine">v1.4.3</span>
   </main>
 
   <input type="file" id="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif" multiple hidden />
@@ -555,6 +562,13 @@
         return;
       }
       if (!IN_APP()) await loadGis();
+      else if (!(window.pixaNative.hasBrowserAuth && window.pixaNative.hasBrowserAuth())) {
+        /* old APK (v1.4.2 or older): its shell can only show Google inside
+           the WebView, which never renders on some phones. The deep-link
+           sign-in needs the new shell. */
+        toast('One-time step: tap “Download pixa-share.apk” below, install it, then press Sign in again', 9000);
+        return;
+      }
       await askToken('consent select_account');
       const r = await gfetch(`${DRIVE}/about?fields=user`);
       if (r.ok) {
@@ -996,8 +1010,9 @@
           if (dismissed) return;                       /* user said later */
           const busy = S.items.some((i) => i.status === 'sending');
           if (busy) { setTimeout(applyWhenIdle, 4000); return; }
-          try { sessionStorage.setItem('pixashare.up', '1'); } catch (e) {}
           try { waiting.postMessage('SKIP_WAITING'); } catch (e) {}
+          /* controllerchange reloads the page (and marks the update), so
+             the new version is actually RUNNING on this same open — v1.4.3 */
         };
         setTimeout(applyWhenIdle, 9000);               /* time to read / tap */
       };
@@ -1017,7 +1032,9 @@
         document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
       }).catch(() => {});
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (!hadController || sessionStorage.getItem('pixashare.up')) return;
+        if (!hadController) return;
+        /* the new worker just took over — reload so the page ITSELF is the
+           new version right now (not only on the next open) */
         try { sessionStorage.setItem('pixashare.up', '1'); } catch (e) {}
         location.reload();
       });

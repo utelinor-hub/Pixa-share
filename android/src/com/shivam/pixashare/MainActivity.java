@@ -108,9 +108,13 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView v, String url) {
                 /* Google OAuth (in-app sign-in, v1.4.0) finishes by
                    redirecting to storagerelay:// — grab the token out of it
-                   and take the user back to the app. MUST be checked before
-                   the host rules below (storagerelay has no host). */
-                if (url != null && url.startsWith("storagerelay://")) {
+                   and take the user back to the app. v1.4.3: the same
+                   response also arrives as our own pixashare://oauth deep
+                   link (from oauth.html — inside the WebView AND when the
+                   sign-in ran in the phone's real browser). Both have no
+                   host, so they MUST be checked before the host rules. */
+                if (url != null && (url.startsWith("storagerelay://")
+                        || url.startsWith("pixashare://"))) {
                     collectAuthResponse(url);
                     return true;
                 }
@@ -229,6 +233,7 @@ public class MainActivity extends Activity {
         }
 
         handleSend(getIntent());
+        handleOauthIntent(getIntent());
     }
 
     @Override
@@ -236,6 +241,7 @@ public class MainActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         handleSend(intent);
+        handleOauthIntent(intent);
     }
 
     /* ---------- Gallery -> Share -> PIXA SHARE ---------- */
@@ -305,23 +311,65 @@ public class MainActivity extends Activity {
         if (url == null || !url.startsWith("https://accounts.google.com/o/oauth2/")) return;
         authStarted = true;
         authRetry = false;
-        /* watchdog: if Google's pages ever strand the user (a hung silent
-           check, a relay page that never navigates — the v1.4.0 blank dark
-           screen), bring them back to the app. Silent renew (prompt=none)
-           should bounce in seconds; interactive sign-in gets real time. */
         final int gen = ++authGen;
+        final boolean silent = url.contains("prompt=none");
+        /* watchdog: if Google's pages ever strand the user, bring them back
+           to the app. Silent renew (prompt=none) should bounce in seconds;
+           interactive sign-in now runs in the phone's browser — it gets a
+           generous window for account picking. */
         authWatch.postDelayed(new Runnable() { public void run() {
             if (gen != authGen || !authStarted || web == null) return;
             authStarted = false;
             Toast.makeText(MainActivity.this,
                     "Google page stuck — back to the app, press Sign in again", Toast.LENGTH_LONG).show();
             web.loadUrl(APP_URL);
-        }}, url.contains("prompt=none") ? 30000L : 180000L);
-        Toast.makeText(this, "Opening Google sign-in…", Toast.LENGTH_SHORT).show();
-        web.loadUrl(url);
+        }}, silent ? 30000L : 600000L);
+        if (silent) {
+            /* token renew: a tiny page bounce inside the WebView — the
+               redirect to oauth.html / pixashare:// is caught right here */
+            web.loadUrl(url);
+        } else {
+            /* interactive sign-in runs in the PHONE'S REAL BROWSER (v1.4.3):
+               on some phones Google's pages never render inside this WebView
+               (pure dark-blue screen), while Chrome already holds the user's
+               Google session — usually ONE tap on their account. Google then
+               redirects to oauth.html, which hands the response back to this
+               app through the pixashare://oauth deep link. */
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                Toast.makeText(this,
+                        "Pick your account in the browser — PIXA SHARE opens again by itself",
+                        Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                authStarted = false;
+                authGen++;
+                Toast.makeText(this, "No browser found — press Sign in again", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
-    /** Parse the storagerelay:// redirect: token in, JSON payload out. */
+    /** Parse an OAuth response (fragment or query) into the JSON payload. */
+    private String authJsonFromResponse(String frag) {
+        if (frag == null) frag = "";
+        String token = qsParam(frag, "access_token");
+        if (token != null && token.length() > 0) {
+            String exp = qsParam(frag, "expires_in");
+            String scope = qsParam(frag, "scope");
+            String state = qsParam(frag, "state");
+            StringBuilder sb = new StringBuilder("{\"access_token\":").append(jsonEsc(token));
+            if (exp != null) {
+                String digits = exp.replaceAll("[^0-9]", "");
+                if (digits.length() > 0) sb.append(",\"expires_in\":").append(digits);
+            }
+            if (scope != null) sb.append(",\"scope\":").append(jsonEsc(scope));
+            if (state != null) sb.append(",\"state\":").append(jsonEsc(state));
+            return sb.append('}').toString();
+        }
+        String err = qsParam(frag, "error");
+        return "{\"error\":" + jsonEsc(err == null || err.length() == 0 ? "login_required" : err) + "}";
+    }
+
+    /** Parse the storagerelay:// or pixashare:// redirect: token in, JSON out. */
     private void collectAuthResponse(String url) {
         String frag = "";
         int hash = url.indexOf('#');
@@ -335,29 +383,35 @@ public class MainActivity extends Activity {
                 if (h2 >= 0) frag = frag.substring(0, h2);
             }
         }
-        String token = qsParam(frag, "access_token");
-        String json;
-        if (token != null && token.length() > 0) {
-            String exp = qsParam(frag, "expires_in");
-            String scope = qsParam(frag, "scope");
-            String state = qsParam(frag, "state");
-            StringBuilder sb = new StringBuilder("{\"access_token\":").append(jsonEsc(token));
-            if (exp != null) {
-                String digits = exp.replaceAll("[^0-9]", "");
-                if (digits.length() > 0) sb.append(",\"expires_in\":").append(digits);
-            }
-            if (scope != null) sb.append(",\"scope\":").append(jsonEsc(scope));
-            if (state != null) sb.append(",\"state\":").append(jsonEsc(state));
-            sb.append('}');
-            json = sb.toString();
-        } else {
-            String err = qsParam(frag, "error");
-            json = "{\"error\":" + jsonEsc(err == null || err.length() == 0 ? "login_required" : err) + "}";
-        }
         authStarted = false;
         authGen++;                               /* cancels the watchdog */
-        pendingAuthJson = json;
+        pendingAuthJson = authJsonFromResponse(frag);
         web.loadUrl(APP_URL);   /* back to the app; delivered in onPageFinished */
+    }
+
+    /**
+     * The sign-in ran in the phone's real browser and oauth.html handed the
+     * response back through the pixashare://oauth deep link (v1.4.3) —
+     * deliver the token to the page (same path as collectAuthResponse).
+     */
+    private void handleOauthIntent(Intent i) {
+        if (i == null || i.getData() == null) return;
+        Uri u = i.getData();
+        if (!"pixashare".equals(u.getScheme()) || !"oauth".equals(u.getHost())) return;
+        String frag = u.getFragment();
+        if (frag == null || frag.length() == 0) frag = u.getEncodedQuery();
+        authStarted = false;
+        authGen++;                               /* cancels the watchdog */
+        pendingAuthJson = authJsonFromResponse(frag);
+        if (web == null) return;                 /* onCreate wires the rest */
+        String cur = web.getUrl();
+        if (cur != null && cur.startsWith(APP_URL)) {
+            String j = pendingAuthJson;
+            pendingAuthJson = null;
+            web.evaluateJavascript("window.__pixaAuthDeliver(" + j + ");", null);
+        } else {
+            web.loadUrl(APP_URL);                /* delivered in onPageFinished */
+        }
     }
 
     /** "a=b&c=d" -> value of "name", URL-decoded; null when absent. */
@@ -431,8 +485,17 @@ public class MainActivity extends Activity {
     private class Bridge {
         @JavascriptInterface
         public void openAuth(final String url) {
-            /* full-page Google OAuth for the in-app sign-in (v1.4.0) */
+            /* interactive sign-in → the phone's browser (v1.4.3), silent
+               renew → inside the WebView; see openAuthUrl() */
             runOnUiThread(new Runnable() { public void run() { openAuthUrl(url); } });
+        }
+
+        @JavascriptInterface
+        public boolean hasBrowserAuth() {
+            /* v1.4.3 marker — the page checks this to know the shell can
+               run the browser sign-in + deep-link return (old APKs do not
+               have this method at all) */
+            return true;
         }
 
         @JavascriptInterface

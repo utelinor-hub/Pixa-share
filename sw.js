@@ -1,4 +1,4 @@
-/* PIXA SHARE — Service Worker (v1.4.2)
+/* PIXA SHARE — Service Worker (v1.4.3)
    Standalone app — lives in its own repo (utelinor-hub/Pixa-share),
    deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
@@ -40,9 +40,16 @@
    9. v1.4.2 — the redirect URI is registered in the Google console now
       (the probe returns the real sign-in page), and both the page and
       the APK shell toast what the sign-in is doing at every step, so a
-      silent hang can never look like a blank screen again. */
+      silent hang can never look like a blank screen again.
+  10. v1.4.3 — on some phones Google's pages never render inside the app
+      WebView (the pure dark-blue screen). Interactive sign-in now runs in
+      the phone's real browser and comes back through the pixashare://oauth
+      deep link; oauth.html redirects there and offers a visible "Return to
+      PIXA SHARE" button if the automatic hand-off is blocked. Silent renew
+      stays inside the WebView. Updates also reload the page the moment the
+      new worker activates. */
 
-const VERSION = 'v1.4.2';
+const VERSION = 'v1.4.3';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 

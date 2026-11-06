@@ -9,27 +9,40 @@
   body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
          font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans',sans-serif;
          background:#eef3f9; color:#14243a; }
-  .box { text-align:center; }
+  .box { text-align:center; padding:24px; }
   .wheel { width:52px; height:52px; border-radius:50%; margin:0 auto 14px;
            background:conic-gradient(#f43935,#ffc40d,#0063fa,#009f59,#f43935);
            -webkit-mask:radial-gradient(circle, transparent 38%, #000 39%);
            mask:radial-gradient(circle, transparent 38%, #000 39%);
            animation:spin 2.4s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
-  p { margin:0; font-size:15px; opacity:.75; }
+  p { margin:0 0 14px; font-size:15px; opacity:.75; }
+  button { display:none; margin:6px auto 0; padding:12px 26px; border:0; border-radius:24px;
+           background:#0d3b66; color:#fff; font-size:15px; font-weight:600;
+           font-family:inherit; }
+  button.show { display:block; }
 </style>
 </head>
 <body>
-<div class="box"><div class="wheel"></div><p id="msg">Finishing sign-in…</p></div>
+<div class="box">
+  <div class="wheel"></div>
+  <p id="msg">Finishing sign-in…</p>
+  <button id="back" type="button">Return to PIXA SHARE</button>
+</div>
 <script>
 (() => {
   'use strict';
-  /* PIXA SHARE — OAuth redirect landing page (v1.4.1).
-     Google ends the in-app sign-in with a REAL redirect to this page:
+  /* PIXA SHARE — OAuth redirect landing page (v1.4.3).
+     Google ends the sign-in with a REAL redirect to this page:
      .../oauth.html#access_token=…&expires_in=…&scope=…&state=…  (or #error=…)
-     This page hands the response to the app through localStorage and hops
-     back to the app shell. It never changes, so a stale service-worker
-     cache can never break sign-in. */
+     The page then hands the response to the Android app through the
+     pixashare://oauth deep link — that works when the page runs inside
+     the app's WebView (the client intercepts the scheme) AND when it
+     runs in the phone's real browser (Chrome offers to open PIXA SHARE).
+     The response is also saved to localStorage, so the plain-browser/PWA
+     flow keeps working when no app is installed: the page falls back to
+     ./index.html, whose boot code consumes it. It never changes, so a
+     stale service-worker cache can never break sign-in. */
   let p = {};
   try {
     (location.hash || '').replace(/^#/, '').split('&').forEach((kv) => {
@@ -46,8 +59,19 @@
       ? { access_token: p.access_token, expires_in: Number(p.expires_in) || 3600, scope: p.scope || '', state: p.state || '' }
       : { error: p.error || 'cancelled' };
     try { localStorage.setItem('pixashare.oauth', JSON.stringify(res)); } catch (e) {}
+    /* hand the response to the app (deep link) */
+    const toApp = () => { try { location.replace('pixashare://oauth' + location.hash); } catch (e) {} };
+    toApp();
+    /* some browsers block automatic app hand-off — offer the tap and fall
+       back to the site flow (the app itself is gone from view if the deep
+       link worked: visibilityState === 'hidden' skips both) */
+    const stillHere = () => document.visibilityState === 'visible';
+    setTimeout(() => { if (stillHere()) document.getElementById('back').classList.add('show'); }, 900);
+    setTimeout(() => { if (stillHere()) location.replace('./index.html'); }, 2600);
+    document.getElementById('back').addEventListener('click', toApp);
+  } else {
+    setTimeout(() => { location.replace('./index.html'); }, 150);
   }
-  setTimeout(() => { location.replace('./index.html'); }, 150);
 })();
 </script>
 </body>
