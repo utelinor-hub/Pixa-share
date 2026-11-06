@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192-v2.png" />
 <style>
   /* ============================================================
-     PIXA SHARE — clean InShare-style mobile sender (v1.3.0)
+     PIXA SHARE — clean InShare-style mobile sender (v1.4.0)
      v1.2.0: the full PIXA brand identity — same Picasa wheel app icon as
      PIXA on the PC (cache-busted -v2 filenames so Android refreshes the
      launcher icon + name), and the header now carries the animated PIXA
@@ -19,6 +19,11 @@
      v1.3.0: the REAL Android app — app/pixa-share.apk (a full-screen native
      shell with own icon, Gallery Share target and photo picker, no browser
      dependency), always downloadable from inside the app below.
+     v1.4.0: Google sign-in now WORKS inside the APK — the Android WebView
+     has no popup windows, so inside the app the OAuth runs as a FULL PAGE:
+     the bridge opens accounts.google.com, Google ends on the storagerelay://
+     redirect the app intercepts and hands the token back to the page. The
+     browser/PWA flow is untouched (still the GIS popup).
      Same Google account as PIXA on the PC. Photos travel through
      the user's own Google Drive ("SHIVAM PIXA" folder) at ORIGINAL
      bytes — same size, same resolution, same ratio, nothing is
@@ -277,7 +282,7 @@
     <p class="apkline" id="apkLine"><b>Android app</b> (full-screen, no browser needed): <a href="./app/pixa-share.apk" download>Download pixa-share.apk</a> &mdash; own icon, Gallery &rarr; Share &rarr; PIXA SHARE, works exactly like a native app.</p>
 
     <p class="note"><b>Originals only</b> — photos reach the PC with the same size, same resolution and same ratio. Nothing is compressed. Works over <b>WiFi and mobile data</b> both, through your own Google Drive.</p>
-    <span class="ver" id="verLine">v1.3.0</span>
+    <span class="ver" id="verLine">v1.4.0</span>
   </main>
 
   <input type="file" id="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif" multiple hidden />
@@ -387,6 +392,70 @@
   }
   const hasToken = () => !!(S.token && Date.now() < S.tokenExp);
 
+  /* ===== In-app Google sign-in (the APK) =====
+     The Android WebView has NO popup windows, so the GIS token popup can
+     never open there — that was the v1.3.0 sign-in bug. Inside the app we
+     run the same OAuth implicit flow as a FULL PAGE instead:
+     pixaNative.openAuth() loads accounts.google.com in this WebView; when
+     Google finishes it redirects to the very storagerelay:// URI the GIS
+     popup itself would use, the app catches that redirect and calls
+     __pixaAuthDeliver() here with the token. (Verified: Google accepts this
+     request shape for our client — the same acceptance the GIS popup gets —
+     so nothing has to change in the Google console.) In a normal browser
+     the GIS popup path below stays exactly as it was. */
+  const IN_APP = () => !!(window.pixaNative && window.pixaNative.openAuth);
+  let appAuth = null;                 /* pending { resolve, reject, tm } */
+  function appAuthDeliver(p) {        /* called by the APK (Android side) */
+    const w = appAuth;
+    if (w) { clearTimeout(w.tm); appAuth = null; }
+    if (p && p.access_token) {
+      storeToken(p);
+      if (w) w.resolve(p);
+      else {
+        /* the page was reloaded mid-auth (the Google page replaced it) —
+           finish the sign-in on the fresh copy */
+        renderAcct();
+        toast('Signed in');
+        kick();
+        manifestLoop();
+        gfetch(`${DRIVE}/about?fields=user`).then((r) => r.ok ? r.json() : null).then((j) => {
+          if (j && j.user) { S.email = j.user.emailAddress || ''; sessSave(); renderAcct(); }
+        }).catch(() => {});
+      }
+    } else if (w) {
+      const e = (p && p.error) || 'cancelled';
+      w.reject(new Error(
+        e === 'access_denied' ? 'Sign-in was cancelled or this account is not allowed to use PIXA' :
+        e === 'login_required' ? 'No Google session yet — press Sign in' :
+        'Sign-in did not finish (' + e + ')'));
+    } else if (p && p.error && p.error !== 'login_required') {
+      toast('Sign-in did not finish (' + p.error + ')', 5200);
+    }
+  }
+  window.__pixaAuthDeliver = appAuthDeliver;    /* the APK calls this */
+  function appAskToken(promptMode) {
+    return new Promise((resolve, reject) => {
+      if (!IN_APP()) { reject(new Error('Sign-in bridge not available')); return; }
+      const state = 'px' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      const url = 'https://accounts.google.com/o/oauth2/v2/auth'
+        + '?client_id=' + encodeURIComponent(CLIENT_ID)
+        + '&response_type=token'
+        + '&scope=' + encodeURIComponent(SCOPE)
+        + '&redirect_uri=' + encodeURIComponent('storagerelay://https/utelinor-hub.github.io?id=' + state)
+        + '&origin=' + encodeURIComponent(location.origin)
+        + '&state=' + encodeURIComponent(state)
+        + '&include_granted_scopes=true'
+        + (promptMode ? '&prompt=' + encodeURIComponent(promptMode) : '');
+      const w = { resolve, reject, tm: 0 };
+      appAuth = w;
+      w.tm = setTimeout(() => {
+        if (appAuth === w) { appAuth = null; reject(new Error('Google sign-in timed out — try again')); }
+      }, promptMode === 'none' ? 45000 : 240000);
+      try { window.pixaNative.openAuth(url); }
+      catch (e) { clearTimeout(w.tm); if (appAuth === w) { appAuth = null; reject(e); } }
+    });
+  }
+
   /* ===== Google Identity Services (same client as the PC app) ===== */
   function loadGis() {
     if (S.gisLoaded) return Promise.resolve();
@@ -416,6 +485,7 @@
     return S.tc;
   }
   async function askToken(promptMode) {
+    if (IN_APP()) return appAskToken(promptMode);
     const tc = await ensureTc();
     return new Promise((resolve, reject) => {
       const done = (fn, arg) => { try { tc.callback = origC; } catch (e) {} clearTimeout(tm); fn(arg); };
@@ -430,6 +500,7 @@
   }
   async function silentRenew() {
     if (!originAllowed()) return null;
+    if (IN_APP() && !navigator.onLine) return null;   /* full-page renew needs network */
     try { return await askToken('none'); } catch (e) { return null; }
   }
 
@@ -439,7 +510,7 @@
         toast('Sign-in works on the official app site: utelinor-hub.github.io/Pixa-share', 8000);
         return;
       }
-      await loadGis();
+      if (!IN_APP()) await loadGis();
       await askToken('consent select_account');
       const r = await gfetch(`${DRIVE}/about?fields=user`);
       if (r.ok) {
@@ -456,7 +527,10 @@
     }
   }
   function signOut() {
-    try { if (S.token && window.google && window.google.accounts) window.google.accounts.oauth2.revoke(S.token, () => {}); } catch (e) {}
+    try {
+      if (S.token && IN_APP()) fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(S.token), { method: 'POST' }).catch(() => {});
+      else if (S.token && window.google && window.google.accounts) window.google.accounts.oauth2.revoke(S.token, () => {});
+    } catch (e) {}
     S.token = null; S.tokenExp = 0; S.email = '';
     S.folderId = null; S.manifestId = null; S.beatId = null;
     sessClear();

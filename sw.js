@@ -1,4 +1,4 @@
-/* PIXA SHARE — Service Worker (v1.3.0)
+/* PIXA SHARE — Service Worker (v1.4.0)
    Standalone app — lives in its own repo (utelinor-hub/Pixa-share),
    deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
@@ -27,9 +27,13 @@
    6. v1.3.0 — the REAL Android app: app/pixa-share.apk (full-screen
       native shell, own icon, Gallery Share target, photo picker — no
       browser dependency) is precached so the download link works
-      offline too. */
+      offline too.
+   7. v1.4.0 — Google sign-in fixed inside the APK: the WebView has no
+      popups, so in-app sign-in goes full-page (bridge → accounts.google.com
+      → storagerelay:// redirect → back). Shell changes: none, just the
+      version. */
 
-const VERSION = 'v1.3.0';
+const VERSION = 'v1.4.0';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 

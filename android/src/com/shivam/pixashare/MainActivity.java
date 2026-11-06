@@ -7,6 +7,7 @@ import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Message;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.view.ViewGroup;
@@ -14,6 +15,8 @@ import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.ValueCallback;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -25,6 +28,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URLDecoder;
 import java.util.ArrayList;
 
 /**
@@ -44,8 +48,12 @@ import java.util.ArrayList;
  *    progress list and Drive upload path as picking by hand
  *  - the page's "Pick photos to send" button opens the Android photo
  *    picker (onShowFileChooser)
- *  - Google sign-in happens inside the app (third-party cookies on,
- *    a plain Chrome mobile user agent — the standard WebView setup)
+ *  - Google sign-in happens inside the app: the WebView has no popup
+ *    windows, so the page runs the OAuth as a FULL PAGE — the bridge
+ *    (openAuth) loads accounts.google.com here, Google finishes by
+ *    redirecting to the storagerelay:// URI (the very one the GIS popup
+ *    itself uses), we intercept it, take the access token out of it and
+ *    hand it back to the page (__pixaAuthDeliver). v1.4.0.
  *  - service worker + IndexedDB keep working, so offline start and the
  *    update pipeline behave like on Chrome
  */
@@ -56,6 +64,11 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private ValueCallback<Uri[]> fileCb;
+
+    /* in-app Google sign-in state (v1.4.0) */
+    private String pendingAuthJson = null;   /* token/error waiting to reach the page */
+    private boolean authStarted = false;     /* a Google auth page is (probably) showing   */
+    private boolean authRetry = false;       /* recovery reload for the auth response    */
 
     /* shared-photo handoff queue (file names inside cacheDir/shared) */
     private final ArrayList<String> pendingNames = new ArrayList<String>();
@@ -74,6 +87,8 @@ public class MainActivity extends Activity {
         s.setDatabaseEnabled(true);
         s.setAllowContentAccess(true);
         s.setMediaPlaybackRequiresUserGesture(false);
+        s.setSupportMultipleWindows(true);              /* window.open must work */
+        s.setJavaScriptCanOpenWindowsAutomatically(true);
         /* plain Chrome mobile UA — Google sign-in refuses embedded WebViews
            that identify themselves as WebView */
         s.setUserAgentString(
@@ -87,6 +102,14 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, String url) {
+                /* Google OAuth (in-app sign-in, v1.4.0) finishes by
+                   redirecting to storagerelay:// — grab the token out of it
+                   and take the user back to the app. MUST be checked before
+                   the host rules below (storagerelay has no host). */
+                if (url != null && url.startsWith("storagerelay://")) {
+                    collectAuthResponse(url);
+                    return true;
+                }
                 String h = Uri.parse(url).getHost();
                 if (h == null) h = "";
                 /* the app itself + Google sign-in/Drive stay inside the app;
@@ -105,10 +128,54 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView v, String url) {
                 drainShared();
+                if (url != null && url.startsWith(APP_URL)) {
+                    authStarted = false;
+                    authRetry = false;
+                    if (pendingAuthJson != null) {
+                        String j = pendingAuthJson;
+                        pendingAuthJson = null;
+                        web.evaluateJavascript("window.__pixaAuthDeliver(" + j + ");", null);
+                    }
+                }
+            }
+
+            @Override
+            public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
+                /* recover from network drops during sign-in: go back to the
+                   app and let the page show its usual "press Sign in again" */
+                if (!req.isForMainFrame()) return;
+                if (pendingAuthJson != null && !authRetry) {
+                    authRetry = true;                       /* token in hand, app reload hiccuped */
+                    web.loadUrl(APP_URL);
+                } else if (pendingAuthJson == null && authStarted) {
+                    authStarted = false;                    /* the Google page itself failed */
+                    pendingAuthJson = "{\"error\":\"network\"}";
+                    authRetry = true;
+                    web.loadUrl(APP_URL);
+                }
             }
         });
 
         web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
+                                          Message resultMsg) {
+                /* window.open() — route the popup's URL into the main app
+                   view (the WebView has no real popup windows) */
+                WebView tmp = new WebView(view.getContext());
+                tmp.setWebViewClient(new WebViewClient() {
+                    @Override
+                    public boolean shouldOverrideUrlLoading(WebView v2, String u2) {
+                        web.loadUrl(u2);
+                        return true;
+                    }
+                });
+                WebView.WebViewTransport t = (WebView.WebViewTransport) resultMsg.obj;
+                t.setWebView(tmp);
+                resultMsg.sendToTarget();
+                return true;
+            }
+
             @Override
             public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb,
                                              FileChooserParams params) {
@@ -199,6 +266,84 @@ public class MainActivity extends Activity {
         }
     }
 
+    /* ---------- in-app Google sign-in (v1.4.0, full-page OAuth) ----------
+
+       Flow: page -> pixaNative.openAuth(authUrl) -> we load accounts.google.com
+       -> user signs in / consents -> Google redirects to
+       storagerelay://https/utelinor-hub.github.io?id=...#access_token=...&expires_in=...
+       (exactly what the GIS popup would receive) -> shouldOverrideUrlLoading
+       catches it -> collectAuthResponse() parses the token -> we load the app
+       again -> onPageFinished hands the token to window.__pixaAuthDeliver(). */
+
+    /** openAuth() bridge — the page asks us to show the Google auth page. */
+    private void openAuthUrl(String url) {
+        if (url == null || !url.startsWith("https://accounts.google.com/o/oauth2/")) return;
+        authStarted = true;
+        authRetry = false;
+        web.loadUrl(url);
+    }
+
+    /** Parse the storagerelay:// redirect: token in, JSON payload out. */
+    private void collectAuthResponse(String url) {
+        String frag = "";
+        int hash = url.indexOf('#');
+        if (hash >= 0) {
+            frag = url.substring(hash + 1);
+        } else {
+            int q = url.indexOf('?');
+            if (q >= 0) {
+                frag = url.substring(q + 1);
+                int h2 = frag.indexOf('#');
+                if (h2 >= 0) frag = frag.substring(0, h2);
+            }
+        }
+        String token = qsParam(frag, "access_token");
+        String json;
+        if (token != null && token.length() > 0) {
+            String exp = qsParam(frag, "expires_in");
+            String scope = qsParam(frag, "scope");
+            String state = qsParam(frag, "state");
+            StringBuilder sb = new StringBuilder("{\"access_token\":").append(jsonEsc(token));
+            if (exp != null) {
+                String digits = exp.replaceAll("[^0-9]", "");
+                if (digits.length() > 0) sb.append(",\"expires_in\":").append(digits);
+            }
+            if (scope != null) sb.append(",\"scope\":").append(jsonEsc(scope));
+            if (state != null) sb.append(",\"state\":").append(jsonEsc(state));
+            sb.append('}');
+            json = sb.toString();
+        } else {
+            String err = qsParam(frag, "error");
+            json = "{\"error\":" + jsonEsc(err == null || err.length() == 0 ? "login_required" : err) + "}";
+        }
+        authStarted = false;
+        pendingAuthJson = json;
+        web.loadUrl(APP_URL);   /* back to the app; delivered in onPageFinished */
+    }
+
+    /** "a=b&c=d" -> value of "name", URL-decoded; null when absent. */
+    private static String qsParam(String qs, String name) {
+        for (String kv : qs.split("&")) {
+            int eq = kv.indexOf('=');
+            if (eq < 0) continue;
+            if (!kv.substring(0, eq).trim().equals(name)) continue;
+            try { return URLDecoder.decode(kv.substring(eq + 1), "UTF-8"); }
+            catch (Exception e) { return kv.substring(eq + 1); }
+        }
+        return null;
+    }
+
+    /** JSON string literal with quotes (safe for tokens/scope/error text). */
+    private static String jsonEsc(String s) {
+        StringBuilder sb = new StringBuilder("\"");
+        for (char c : s.toCharArray()) {
+            if (c == '"' || c == '\\') sb.append('\\').append(c);
+            else if (c < 32) sb.append(String.format("\\u%04x", (int) c));
+            else sb.append(c);
+        }
+        return sb.append('"').toString();
+    }
+
     private String queryName(Uri u) {
         try {
             Cursor c = getContentResolver().query(u, null, null, null, null);
@@ -246,6 +391,12 @@ public class MainActivity extends Activity {
      */
     private class Bridge {
         @JavascriptInterface
+        public void openAuth(final String url) {
+            /* full-page Google OAuth for the in-app sign-in (v1.4.0) */
+            runOnUiThread(new Runnable() { public void run() { openAuthUrl(url); } });
+        }
+
+        @JavascriptInterface
         public String takeFile() {
             String entry;
             synchronized (pendingNames) {
@@ -265,20 +416,10 @@ public class MainActivity extends Activity {
                 in.close();
                 String b64 = Base64.encodeToString(raw.toByteArray(), Base64.NO_WRAP);
                 f.delete();
-                return "{\"name\":" + json(name) + ",\"mime\":" + json(mime) + ",\"b64\":\"" + b64 + "\"}";
+                return "{\"name\":" + jsonEsc(name) + ",\"mime\":" + jsonEsc(mime) + ",\"b64\":\"" + b64 + "\"}";
             } catch (Exception e) {
                 return "null";
             }
-        }
-
-        private String json(String s) {
-            StringBuilder sb = new StringBuilder("\"");
-            for (char c : s.toCharArray()) {
-                if (c == '"' || c == '\\') sb.append('\\').append(c);
-                else if (c < 32) sb.append(String.format("\\u%04x", (int) c));
-                else sb.append(c);
-            }
-            return sb.append('"').toString();
         }
     }
 

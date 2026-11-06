@@ -67,4 +67,21 @@ sender and receiver agree on a file format.
   no Gradle / Android Studio needed). The debug keystore is kept in the
   repo so every future build updates cleanly over the installed app.
 
+## Google sign-in inside the APK (v1.4.0)
+
+- The Android WebView has **no popup windows**, so the GIS token popup
+  (`google.accounts.oauth2`) can never open there — that silently broke
+  sign-in in v1.3.0.
+- Fix: inside the app (`window.pixaNative` present) the OAuth implicit
+  flow runs **as a full page**. The page asks the bridge
+  (`pixaNative.openAuth`) to load `accounts.google.com/o/oauth2/v2/auth`
+  with `redirect_uri=storagerelay://https/utelinor-hub.github.io?id=...`
+  — the very URI the GIS popup itself would use, so Google accepts it
+  with **no console changes**. On consent Google redirects there with
+  `#access_token=...`; the app intercepts that scheme, parses the token
+  and hands it back to the page via `window.__pixaAuthDeliver(...)`.
+- Verified against Google: the same request with a bogus redirect_uri
+  gets `redirect_uri_mismatch`, ours gets the real sign-in page.
+- Browser/PWA sign-in is untouched (still the GIS popup).
+
 © SHIVAM PIXA project.
