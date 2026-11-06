@@ -5,7 +5,7 @@ phone. Photos clicked on the phone travel to **SHIVAM PIXA on the PC at
 ORIGINAL quality** — same size, same resolution, same ratio, nothing is
 re-encoded. Works over home WiFi **and** mobile data.
 
-**Live app:** https://utelinor-hub.github.io/pixa-share/
+**Live app:** https://utelinor-hub.github.io/Pixa-share/
 
 This app is fully standalone. It shares **no code** with the
 [SHIVAM PIXA](https://github.com/utelinor-hub/shivam-pixa) PC app — the two

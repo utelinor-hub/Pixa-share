@@ -1,6 +1,6 @@
 /* PIXA SHARE — Service Worker (v1.0.0)
    Standalone app — lives in its own repo (utelinor-hub/pixa-share),
-   deployed at https://utelinor-hub.github.io/pixa-share/ .
+   deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
    Three jobs:
    1. App shell cache — PIXA SHARE opens instantly and works offline.
@@ -15,7 +15,7 @@
       renew an expired Google token, so if the session has expired it
       simply leaves the queue for the next app open. */
 
-const VERSION = 'v1.0.0';
+const VERSION = 'v1.0.1';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 
