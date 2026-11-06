@@ -1,4 +1,4 @@
-/* PIXA SHARE — Service Worker (v1.4.3)
+/* PIXA SHARE — Service Worker (v1.4.4)
    Standalone app — lives in its own repo (utelinor-hub/Pixa-share),
    deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
@@ -47,9 +47,15 @@
       deep link; oauth.html redirects there and offers a visible "Return to
       PIXA SHARE" button if the automatic hand-off is blocked. Silent renew
       stays inside the WebView. Updates also reload the page the moment the
-      new worker activates. */
+      new worker activates.
+  11. v1.4.4 — uploads never wait for the PC (or for the Auto-send toggle)
+      again: a picked photo goes straight to Google Drive, PC on or off.
+      The misleading "Checking for your PC…" state is gone — the header
+      now explains that photos upload to Drive first and PIXA on the PC
+      picks them up when it turns on. "Auto send" now means BACKGROUND
+      sending only. */
 
-const VERSION = 'v1.4.3';
+const VERSION = 'v1.4.4';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 

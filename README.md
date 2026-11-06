@@ -19,11 +19,13 @@ sender and receiver agree on a file format.
    in it. Nothing passes through any third-party server.
 2. Pick photos (or use **Gallery → Share → PIXA SHARE** on Android) — every
    file is queued in the app and uploaded **byte-for-byte as-is**.
-3. The big **Auto-send to PC** switch keeps the app sending on its own:
+3. The **Auto send (background)** switch is only about BACKGROUND sending:
+   photos upload to Google Drive **the moment you pick them — PC on or
+   off**. With the switch ON the app also keeps working in the background:
    Wake Lock keeps the app alive while sending, and a Background Sync
    flushes the queue even after the app is closed. On the PC, SHIVAM PIXA
    (v3.30.0+) adopts the arriving photos automatically into a
-   **PIXA SHARE** group.
+   **PIXA SHARE** group the next time it runs.
 
 ## Drive protocol (the only contract with SHIVAM PIXA)
 
@@ -135,5 +137,23 @@ sender and receiver agree on a file format.
 - Update pipeline nit fixed: the auto-applied update now reloads the page
   the same moment the new worker activates (previously the new version
   only really appeared on the next open).
+
+## v1.4.4 — photos upload even when the PC is off
+
+The queue no longer waits for anything:
+
+- A picked photo goes **straight to Google Drive** — PC on or off, Auto
+  send ON or OFF. When the PC (SHIVAM PIXA) turns on later, it adopts the
+  arrivals automatically.
+- The misleading **"Checking for your PC…"** header state is gone; the
+  header now says the truth: *"Google Drive ready — photos upload even
+  when the PC is off"*.
+- **Auto send** now means *background* sending only (screen off, Gallery
+  share, Wake Lock + Background Sync) — never a gate in front of the
+  upload itself.
+- Retries no longer depend on the toggle either — every 15 s, on
+  reconnect and on every app open the queue flushes itself.
+- APK versionCode 9 (v1.4.4), same debug signature — installs straight
+  over the old one.
 
 © SHIVAM PIXA project.
