@@ -1,4 +1,4 @@
-/* PIXA SHARE — Service Worker (v1.1.0)
+/* PIXA SHARE — Service Worker (v1.2.0)
    Standalone app — lives in its own repo (utelinor-hub/Pixa-share),
    deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
@@ -18,9 +18,14 @@
       background and then WAITS (no immediate skipWaiting). The page
       shows the "Install Update" popup and applies it (user tap or ~9 s
       auto, never mid-send). Safety net: activate anyway after 25 s so
-      an update can never stall forever. */
+      an update can never stall forever.
+   5. v1.2.0 — PIXA brand identity: the icon set moves to cache-busted
+      -v2 filenames (same Picasa wheel artwork as PIXA on the PC) so
+      Android refreshes the launcher icon + app name, and the shell now
+      carries the animated header logo pieces (logo-ring-v2 spins,
+      logo-core-v2 stays still). */
 
-const VERSION = 'v1.1.0';
+const VERSION = 'v1.2.0';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 
@@ -33,11 +38,12 @@ const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './icons/logo-round.png',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-maskable-512.png',
-  './icons/favicon.png'
+  './icons/favicon-v2.png',
+  './icons/icon-192-v2.png',
+  './icons/icon-512-v2.png',
+  './icons/icon-maskable-512-v2.png',
+  './icons/logo-ring-v2.png',
+  './icons/logo-core-v2.png'
 ];
 
 self.addEventListener('install', (e) => {

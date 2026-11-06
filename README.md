@@ -38,7 +38,20 @@ sender and receiver agree on a file format.
 
 - Pure HTML/CSS/JS — no build step, no frameworks, no tracking.
 - Installable PWA: own Service Worker (offline shell + Android share
-  target + background uploader), own manifest and icons.
+  target + background uploader + v1.1.0 auto-update pipeline), own
+  manifest and icons.
 - Runs entirely on GitHub Pages.
+
+## Brand (v1.2.0)
+
+- App icon = the same Picasa colour-wheel artwork as PIXA on the PC
+  (icon-192-v2 / icon-512-v2 / icon-maskable-512-v2 — the `-v2`
+  filenames cache-bust the manifest so Android refreshes the launcher
+  icon + app name on the next app open).
+- Header = the animated PIXA logo: `logo-ring-v2.png` (colour wheel)
+  spins slowly while `logo-core-v2.png` (white disc + shutter emblem)
+  stays still — the RR-badge effect — over an Aboreto "PIXA SHARE"
+  wordmark with a shine sweep. The font is embedded as woff2, so it
+  works fully offline.
 
 © SHIVAM PIXA project.
