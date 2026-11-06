@@ -1,8 +1,8 @@
-/* PIXA SHARE — Service Worker (v1.0.0)
-   Standalone app — lives in its own repo (utelinor-hub/pixa-share),
+/* PIXA SHARE — Service Worker (v1.1.0)
+   Standalone app — lives in its own repo (utelinor-hub/Pixa-share),
    deployed at https://utelinor-hub.github.io/Pixa-share/ .
    ------------------------------------------------------------------
-   Three jobs:
+   Jobs:
    1. App shell cache — PIXA SHARE opens instantly and works offline.
    2. Android share target — Gallery → Share → PIXA SHARE: the POST
       lands here, every photo is stashed in a cache queue and the app
@@ -13,9 +13,14 @@
       uploads pending photos with the saved Google token. This is the
       "application back me run karta rahe" part. The worker cannot
       renew an expired Google token, so if the session has expired it
-      simply leaves the queue for the next app open. */
+      simply leaves the queue for the next app open.
+   4. v1.1.0 — Android-style auto-update: a new version INSTALLS in the
+      background and then WAITS (no immediate skipWaiting). The page
+      shows the "Install Update" popup and applies it (user tap or ~9 s
+      auto, never mid-send). Safety net: activate anyway after 25 s so
+      an update can never stall forever. */
 
-const VERSION = 'v1.0.1';
+const VERSION = 'v1.1.0';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 
@@ -37,7 +42,11 @@ const ASSETS = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
-  self.skipWaiting();
+  /* NO skipWaiting here — the page's "Install Update" popup decides when
+     to restart (user tap, or ~9 s auto once no photo is sending). Safety
+     net: if the popup was missed entirely (stale page in background),
+     activate anyway after 25 s so an update can never stall forever. */
+  setTimeout(() => self.skipWaiting(), 25000);
 });
 
 self.addEventListener('activate', (e) => {

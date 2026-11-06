@@ -147,6 +147,27 @@
     opacity: 0; pointer-events: none; transition: all .25s; max-width: 88vw; text-align: center; z-index: 50;
   }
   .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ===== v1.1.0: Android-style update popup (bottom snackbar) =====
+     The browser downloads a new version in the background on its own;
+     the moment it is ready this popup is shown — one tap installs. */
+  #updBanner {
+    display: none; align-items: center; gap: 10px;
+    position: fixed; left: 50%; transform: translateX(-50%) translateY(20px);
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    max-width: 92vw; z-index: 60;
+    background: linear-gradient(135deg, #0d3b66, #1a6bb3); color: #fff;
+    padding: 10px 10px 10px 16px; border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(13,59,102,.4);
+    font-size: 12.5px; font-weight: 600;
+    opacity: 0; pointer-events: none; transition: all .25s;
+  }
+  #updBanner.show { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+  #updBanner .upd-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #updBanner button { flex: none; border: 0; cursor: pointer; font: inherit; font-size: 12px; }
+  #updRestart { background: linear-gradient(135deg, #0aa574, #0cbb84); color: #fff; font-weight: 800; padding: 8px 15px; border-radius: 999px; box-shadow: 0 2px 8px rgba(10,165,116,.4); }
+  #updClose { background: transparent; color: #fff; opacity: .7; padding: 4px 8px; border-radius: 8px; }
+  .ver { display: block; margin-top: 5px; font-size: 10.5px; color: #9fb0c3; text-align: center; }
 </style>
 </head>
 <body>
@@ -208,10 +229,17 @@
     </div>
 
     <p class="note"><b>Originals only</b> — photos reach the PC with the same size, same resolution and same ratio. Nothing is compressed. Works over <b>WiFi and mobile data</b> both, through your own Google Drive.</p>
+    <span class="ver" id="verLine">v1.1.0</span>
   </main>
 
   <input type="file" id="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif" multiple hidden />
   <div class="toast" id="toast"></div>
+
+  <div id="updBanner" role="alert">
+    <span class="upd-txt" id="updText">A new version of PIXA SHARE is ready</span>
+    <button id="updRestart" type="button">Install Update</button>
+    <button id="updClose" type="button" aria-label="Dismiss" title="Later">&#10005;</button>
+  </div>
 
 <script>
 (() => {
@@ -753,13 +781,88 @@
        without this registration PIXA SHARE would never be installable,
        would never appear in the Android share sheet and could not send
        with the app closed */
+    /* ===== v1.1.0: Android-style auto-update pipeline (same as SHIVAM PIXA)
+       1) the browser downloads a new version in the BACKGROUND on its own
+          (3 s after boot, every 15 min, and every time the app becomes
+          visible) — the user never does anything
+       2) the new worker installs but WAITS: the moment it is ready the
+          "Install Update" popup appears; a tap applies it (or it auto-
+          applies after ~9 s — never in the middle of a sending photo)
+       3) after the restart a short "updated to vX" toast confirms that
+          ALL changes are live — an update never disappears silently */
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').then((reg) => {
-          /* a queued update applies on the next open (the worker skip-waits) */
-          try { reg.update().catch(() => {}); } catch (e) {}
-        }).catch(() => {});
+      const hadController = !!navigator.serviceWorker.controller;
+      const banner = document.getElementById('updBanner');
+      const updText = document.getElementById('updText');
+      const updRestart = document.getElementById('updRestart');
+      const updClose = document.getElementById('updClose');
+      let waiting = null; /* new worker: installed, not active yet */
+      let dismissed = false;
+      const askVer = (w) => new Promise((res) => {
+        let done = false;
+        const finish = (v) => { if (!done) { done = true; res(v); } };
+        try {
+          const ch = new MessageChannel();
+          ch.port1.onmessage = (ev) => finish(ev.data && ev.data.version);
+          setTimeout(() => finish(null), 1200);
+          w.postMessage({ type: 'PIXASHARE_VERSION' }, [ch.port2]);
+        } catch (e) { finish(null); }
       });
+      const hideBanner = () => banner.classList.remove('show');
+      const applyNow = () => {
+        hideBanner();
+        try { sessionStorage.setItem('pixashare.up', '1'); } catch (e) {}
+        if (waiting) { try { waiting.postMessage('SKIP_WAITING'); } catch (e) {} setTimeout(() => location.reload(), 150); }
+        else location.reload();
+      };
+      updRestart.addEventListener('click', applyNow);
+      updClose.addEventListener('click', () => { dismissed = true; hideBanner(); toast('Later — the update applies the next time the app opens', 5000); });
+      const markReady = (w) => {
+        if (!w || waiting === w) return;
+        waiting = w;
+        if (!dismissed) {
+          askVer(w).then((v) => { updText.textContent = v ? `Update ${v} is ready` : 'A new version of PIXA SHARE is ready'; });
+          banner.classList.add('show');
+        } else {
+          toast('A new version is ready — it installs on the next app open', 6000);
+        }
+        const applyWhenIdle = () => {
+          if (dismissed) return;                       /* user said later */
+          const busy = S.items.some((i) => i.status === 'sending');
+          if (busy) { setTimeout(applyWhenIdle, 4000); return; }
+          try { sessionStorage.setItem('pixashare.up', '1'); } catch (e) {}
+          try { waiting.postMessage('SKIP_WAITING'); } catch (e) {}
+        };
+        setTimeout(applyWhenIdle, 9000);               /* time to read / tap */
+      };
+      navigator.serviceWorker.register('./sw.js').then((reg) => {
+        if (reg.waiting && navigator.serviceWorker.controller) markReady(reg.waiting);
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) markReady(nw);
+          });
+        });
+        /* background download — the user never does anything */
+        const check = () => { try { reg.update().catch(() => {}); } catch (e) {} };
+        setTimeout(check, 3000);
+        setInterval(check, 15 * 60 * 1000);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+      }).catch(() => {});
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController || sessionStorage.getItem('pixashare.up')) return;
+        try { sessionStorage.setItem('pixashare.up', '1'); } catch (e) {}
+        location.reload();
+      });
+      /* the update was just applied and the page reloaded — say so */
+      if (sessionStorage.getItem('pixashare.up')) {
+        sessionStorage.removeItem('pixashare.up');
+        const ctl = navigator.serviceWorker.controller;
+        (ctl ? askVer(ctl) : navigator.serviceWorker.ready.then((r) => askVer(r.active))).then((v) => {
+          toast(v ? `PIXA SHARE updated to ${v} — all changes are live` : 'PIXA SHARE updated — all changes are live', 8000);
+        });
+      }
     }
     sessLoad();
     await idsLoad();
