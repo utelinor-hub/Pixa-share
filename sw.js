@@ -67,9 +67,20 @@
       signed-in email stays saved after the 1-hour access token dies,
       and a silent prompt=none bounce through the phone's real browser
       (the one holding the Google session) returns a fresh token with
-      zero taps — no more signing in again after every update. */
+      zero taps — no more signing in again after every update.
+  15. v1.4.8 — THE SHARING FIX: the silent reconnect never actually
+      reached the real browser (askToken dropped the forceBrowser flag,
+      so pxbrowser=1 was never added) — every prompt=none bounce died
+      inside the sessionless WebView with 'Sign-in did not finish
+      (interaction_required)' and uploads stalled with the token dead.
+      Now the flag travels: the bounce runs in Chrome, the token comes
+      back with zero taps and photos flow again. Also: the account
+      menu gets a real 'Sign in again' button (the old build showed
+      only text with no button), the chip turns amber while sending is
+      paused, stale sign-in errors stop re-toasting on later boots,
+      and a clear toast points at the fix when photos are waiting. */
 
-const VERSION = 'v1.4.7';
+const VERSION = 'v1.4.8';
 const CACHE = `pixashare-${VERSION}`;
 const SHARE_CACHE = 'pixashare-shared-v1';
 

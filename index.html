@@ -153,10 +153,23 @@
   .pmenu.open { display: block; }
   .pm-em { font-size: 13px; font-weight: 700; word-break: break-all; }
   .pm-st { font-size: 11.5px; color: #0a8a63; margin-top: 3px; }
+  /* v1.4.8: the reconnect button — when the token has expired but the
+     account is still known, the menu used to show only the TEXT
+     'Tap Sign in to reconnect' with no actual button anywhere (the
+     header Sign in button hides once the email is known). Dead end. */
+  .pm-in {
+    margin-top: 10px; width: 100%; border: none; border-radius: 10px; padding: 8px;
+    background: #e7f2ec; color: #0a8a63; font-weight: 750; font-size: 12.5px;
+  }
   .pm-out {
     margin-top: 10px; width: 100%; border: none; border-radius: 10px; padding: 8px;
     background: #fdeaea; color: #c0392b; font-weight: 750; font-size: 12.5px;
   }
+  /* v1.4.8: amber attention ring — the chip quietly warns that sending
+     is paused until the user reconnects (token expired, silent renew
+     could not finish) */
+  .prof.attn { border-color: #f0b429; background: rgba(240,180,41,.22); }
+  .prof.attn .pav { box-shadow: 0 0 0 2px #f0b429; }
   .gbtn {
     display: inline-flex; align-items: center; gap: 8px; background: #fff; color: #333;
     border: 1px solid #d5dde8; border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 650;
@@ -316,6 +329,7 @@
       <div class="pmenu" id="pmenu">
         <div class="pm-em" id="pmEm"></div>
         <div class="pm-st" id="pmSt">Connected to Google Drive &#10003;</div>
+        <button class="pm-in" id="pmRecon" style="display:none">Sign in again</button>
         <button class="pm-out" id="signOut">Sign out</button>
       </div>
     </div>
@@ -351,7 +365,7 @@
     </div>
 
     <div class="apkupd" id="apkLine" style="display:none"><a href="./app/pixa-share.apk" download>Update PIXA SHARE app</a></div>
-    <span class="ver" id="verLine">v1.4.7</span>
+    <span class="ver" id="verLine">v1.4.8</span>
   </main>
 
   <input type="file" id="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif" multiple hidden />
@@ -504,14 +518,20 @@
           if (j && j.user) { S.email = j.user.emailAddress || ''; sessSave(); renderAcct(); }
         }).catch(() => {});
       }
-    } else if (w) {
-      const e = (p && p.error) || 'cancelled';
-      w.reject(new Error(
-        e === 'access_denied' ? 'Sign-in was cancelled or this account is not allowed to use PIXA' :
-        e === 'login_required' ? 'No Google session yet — press Sign in' :
-        'Sign-in did not finish (' + e + ')'));
-    } else if (p && p.error && p.error !== 'login_required') {
-      toast('Sign-in did not finish (' + p.error + ')', 5200);
+    } else {
+      /* v1.4.8: an error came back — clear the copy oauth.html saved to
+         localStorage in BOTH branches, so a stale error can never
+         re-toast on the next boot (consumeOAuthResult reads it) */
+      try { localStorage.removeItem('pixashare.oauth'); } catch (e) {}
+      if (w) {
+        const e = (p && p.error) || 'cancelled';
+        w.reject(new Error(
+          e === 'access_denied' ? 'Sign-in was cancelled or this account is not allowed to use PIXA' :
+          e === 'login_required' ? 'No Google session yet — press Sign in' :
+          'Sign-in did not finish (' + e + ')'));
+      } else if (p && p.error && p.error !== 'login_required') {
+        toast('Sign-in did not finish (' + p.error + ')', 5200);
+      }
     }
   }
   window.__pixaAuthDeliver = appAuthDeliver;    /* the APK calls this */
@@ -604,8 +624,14 @@
     }
     return S.tc;
   }
-  async function askToken(promptMode) {
-    if (IN_APP()) return appAskToken(promptMode);
+  /* v1.4.8 FIX: forceBrowser must travel — silentRenew() calls
+     askToken('none', true) so the prompt=none bounce runs in the phone's
+     REAL browser (pxbrowser=1). The old single-parameter signature
+     silently dropped that flag, every silent reconnect then bounced
+     inside the sessionless WebView and died with
+     "Sign-in did not finish (interaction_required)" — uploads stalled. */
+  async function askToken(promptMode, forceBrowser) {
+    if (IN_APP()) return appAskToken(promptMode, forceBrowser);
     const tc = await ensureTc();
     return new Promise((resolve, reject) => {
       const done = (fn, arg) => { try { tc.callback = origC; } catch (e) {} clearTimeout(tm); fn(arg); };
@@ -975,13 +1001,16 @@
   /* ===== rendering ===== */
   function renderAcct() {
     const signedIn = !!S.email;
+    const needRecon = signedIn && !hasToken();   /* v1.4.8: email known, token gone */
     $('profChip').style.display = signedIn ? '' : 'none';
+    $('profChip').classList.toggle('attn', needRecon && !S.renewing);
     $('signIn').style.display = signedIn ? 'none' : '';
+    $('pmRecon').style.display = needRecon ? '' : 'none';
     if (signedIn) {
       $('pav').textContent = (S.email[0] || '?').toUpperCase();
       $('pem').textContent = S.email;
       $('pmEm').textContent = S.email;
-      $('pmSt').textContent = hasToken() ? 'Connected to Google Drive ✓' : (S.renewing ? 'Reconnecting to Google Drive…' : 'Tap Sign in to reconnect');
+      $('pmSt').textContent = hasToken() ? 'Connected to Google Drive ✓' : (S.renewing ? 'Reconnecting to Google Drive…' : 'Sign-in expired — tap “Sign in again”');
     }
     $('pmenu').classList.remove('open');
   }
@@ -1190,6 +1219,10 @@
     $('signIn').addEventListener('click', signIn);
     /* header profile chip: tap to open the little account menu */
     $('signOut').addEventListener('click', () => { $('pmenu').classList.remove('open'); signOut(); });
+    /* v1.4.8: the menu's own reconnect button — same flow as the header
+       Sign in, just reachable in the expired-token state where the old
+       build offered no button at all */
+    $('pmRecon').addEventListener('click', () => { $('pmenu').classList.remove('open'); signIn(); });
     $('profChip').addEventListener('click', (e) => { e.stopPropagation(); $('pmenu').classList.toggle('open'); });
     document.addEventListener('click', (e) => {
       if (!$('pmenu').classList.contains('open')) return;
@@ -1232,7 +1265,13 @@
     if (!hasToken() && S.email && originAllowed()) {
       silentRenew().then((t) => {
         if (t) { renderAcct(); kick(); manifestLoop(); }
-        else if (S.email) renderAcct();   /* chip: "Tap Sign in to reconnect" */
+        else if (S.email) {
+          renderAcct();
+          /* v1.4.8: never leave the user guessing — if photos are stuck,
+             point at the exact fix (menu now HAS a Sign in button) */
+          const pend = S.items.some((i) => i.status === 'waiting' || i.status === 'failed' || i.status === 'sending');
+          if (pend && originAllowed()) toast('Photos are waiting — tap your account at the top, then “Sign in again”', 9000);
+        }
       }).catch(() => { if (S.email) renderAcct(); });
     }
   }
